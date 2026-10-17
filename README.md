@@ -2,7 +2,7 @@
 
 一款 2.5D 网页小游戏：点击草地移动小牛，收集草料，回到庇护所过关。
 
-**在线试玩**：`https://{你的Gitee用户名}.gitee.io/moumou/`（部署后替换，详见 DEPLOY_GITEE.md）
+**在线试玩**：https://dimdream.github.io/moumou/
 
 ## 玩法
 
@@ -56,6 +56,6 @@ _build/               构建脚本与网页模板源码
 
 改 `_build/moumou_template.html` 顶部的配置区（草料数量、小牛速度、树林密度、龙卷风参数等），然后运行构建脚本重新生成单文件游戏。
 
-## 部署到 Gitee Pages
+## 部署
 
-详见 [DEPLOY_GITEE.md](DEPLOY_GITEE.md)。部署后手机浏览器打开链接即可试玩。
+详见 [DEPLOY.md](DEPLOY.md)。部署后手机浏览器打开链接即可试玩。

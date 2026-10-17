@@ -1,0 +1,3 @@
+# ssh UserKnownHostsFile 曾误产生的保留名文件（无法删除，仅屏蔽）
+NUL
+nul.tmp

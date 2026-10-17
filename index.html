@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>哞哞庇护所 · Moumou Shelter</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -138,6 +138,23 @@
   }
   #winCard button.ghost { background: none; color: #6b8a5f; border: 2px solid #c4d8b6; box-shadow: none; }
   #winCard button:active { transform: translateY(3px); box-shadow: 0 1px 0 #4a8437; }
+  /* ================= 错误 / 恢复页 ================= */
+  #errOverlay { background: rgba(38,62,32,.55); backdrop-filter: blur(4px); }
+  #errCard {
+    background: #fffdf4; border-radius: 24px; padding: 30px 38px 26px; width: min(560px, 92vw);
+    box-shadow: 0 18px 50px rgba(20,40,15,.35); border: 3px solid #ffe9a8; text-align: center; color: #3d5a34;
+  }
+  #errCard .errIcon { font-size: 58px; line-height: 1; }
+  #errCard h1 { font-size: 27px; color: #e8930c; margin: 10px 0 8px; }
+  #errCard p { font-size: 14.5px; line-height: 1.8; margin-bottom: 20px; word-break: break-all; }
+  #errCard button {
+    font-family: inherit; font-size: 16px; font-weight: 700; color: #fff; background: linear-gradient(180deg,#8ed06b,#5da344);
+    border: none; border-radius: 12px; padding: 11px 26px; cursor: pointer; box-shadow: 0 4px 0 #4a8437;
+  }
+  #errCard button.ghost { background: none; color: #6b8a5f; border: 2px solid #c4d8b6; box-shadow: none; }
+  #errCard button:active { transform: translateY(3px); box-shadow: 0 1px 0 #4a8437; }
+  /* 触屏优化：消除双击缩放延迟与点击高亮 */
+  button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
 <body>
@@ -178,6 +195,19 @@
   </div>
 </div>
 
+<!-- 错误 / 恢复页 -->
+<div id="errOverlay" class="overlay">
+  <div id="errCard">
+    <div class="errIcon">😥</div>
+    <h1>出错了</h1>
+    <p id="errMsg"></p>
+    <div class="btnRow">
+      <button id="btnErrRetry">重试</button>
+      <button id="btnErrMenu" class="ghost">返回菜单</button>
+    </div>
+  </div>
+</div>
+
 <!-- 过关结算 -->
 <div id="winOverlay">
   <div id="winCard">
@@ -202,21 +232,32 @@ function(t,e){"object"==typeof exports&&"undefined"!=typeof module?e(exports):"f
 
 </script>
 <script>
-/* ================= 关卡定义（1-5 小关为第一大关） ================= */
+/* ================= 关卡定义（1-5 小关为第一大关） =================
+ * 2-5 关统一由「素材迷宫」生成：递归回溯挖出迷宫结构，
+ * 墙 materialize 成河流或树木，通道 materialize 成小桥（跨河）或空地。
+ * asset = { rw, rh, cell, bands:[{axis:'h'|'v', at:网格线}], braid:死路疏通率 } */
 var LEVELS = {
-  1: { name: '青草原野', desc: '收集草料回到庇护所，没有龙卷风', star: 1, tornado: false, rivers: 0, bridges: 0, maze: false, rain: false },
-  2: { name: '小河绕行', desc: '河流挡路，只能走小桥过河', star: 2, tornado: true, rivers: 2, bridges: 3, maze: false, rain: false },
-  3: { name: '水网密布', desc: '好多条河，认准一路小桥', star: 2, tornado: true, rivers: 6, bridges: 1, maze: false, rain: false },
-  4: { name: '迷宫探路', desc: '过小桥进迷宫，找齐草料和庇护所', star: 3, tornado: true, rivers: 1, bridges: 1, maze: true, rain: false },
-  5: { name: '风雨迷宫', desc: '刮风下雨的迷宫，坚持到底', star: 3, tornado: true, rivers: 1, bridges: 1, maze: true, rain: true }
+  1: { name: '青草原野', desc: '收集草料回到庇护所，没有龙卷风', star: 1, tornado: false, asset: null, rain: false },
+  2: { name: '小河绕行', desc: '河流挡路，只能走小桥过河', star: 2, tornado: true, rain: false,
+       asset: { rw: 5, rh: 3, cell: 12, bands: [{ axis: 'h', at: 2 }], braid: 0.6 } },
+  3: { name: '水网密布', desc: '河网交错，认准桥路穿行', star: 2, tornado: true, rain: false,
+       asset: { rw: 7, rh: 5, cell: 11, bands: [{ axis: 'h', at: 2 }, { axis: 'h', at: 6 }, { axis: 'v', at: 6 }], braid: 0.35 } },
+  4: { name: '迷宫探路', desc: '树墙河流环绕的迷宫，找齐草料和庇护所', star: 3, tornado: true, rain: false,
+       asset: { rw: 9, rh: 9, cell: 11, bands: [{ axis: 'h', at: 6 }, { axis: 'h', at: 12 }, { axis: 'v', at: 8 }], braid: 0.1 } },
+  5: { name: '风雨迷宫', desc: '刮风下雨的迷宫，坚持到底', star: 3, tornado: true, rain: true,
+       asset: { rw: 9, rh: 9, cell: 11, bands: [{ axis: 'h', at: 6 }, { axis: 'h', at: 12 }, { axis: 'v', at: 8 }], braid: 0.1 } }
 };
-var curLevel = 0;
-(function () {
-  var m = (location.hash.match(/level=(\d+)/) || [])[1];
-  var n = parseInt(m, 10);
-  if (n >= 1 && n <= 5) curLevel = n;
-})();
+var curLevel = 0;   // 启动恒为菜单页：关卡一律由玩家点击进入（stale hash 不再自动进关）
 var L = LEVELS[curLevel] || LEVELS[1]; // 菜单背景用第 1 关配置展示
+
+/* ================= AbortController 兜底（老浏览器无原生支持时自造一个） ================= */
+if (typeof AbortController === 'undefined') {
+  window.AbortController = function () {
+    var cbs = [];
+    this.signal = { aborted: false, addEventListener: function (ev, fn) { if (ev === 'abort') cbs.push(fn); } };
+    this.abort = function () { this.signal.aborted = true; for (var i = 0; i < cbs.length; i++) cbs[i](); };
+  };
+}
 
 /* ================= 无刷新切关基础设施 =================
  * 手机上 location.hash + location.reload() 切关不可靠（file:// / iOS WebView 常静默失败），
@@ -227,6 +268,151 @@ var mmAbort = null;     // AbortController：切关时一次性摘掉全局监�
 var mmRenderer = null;  // 当前 WebGLRenderer（切关时 dispose，防 context 泄漏）
 var mmBound = false;    // 菜单/结算按钮只绑一次
 var audioCtx = null, muted = false, rainGain = null, rainSrc = null; // 音频跨关复用（浏览器限制 AudioContext 数量）
+
+/* ================= 通关记录（localStorage 可能不可用，兜底内存） ================= */
+/* 通关记录（localStorage 可能不可用，兜底内存） */
+var clearedSet = new Set();
+try {
+  var rawCleared = localStorage.getItem('mm_cleared');
+  if (rawCleared) rawCleared.split(',').forEach(function (s) { var n = parseInt(s, 10); if (n) clearedSet.add(n); });
+} catch (e) {}
+function saveCleared() { try { localStorage.setItem('mm_cleared', Array.from(clearedSet).join(',')); } catch (e) {} }
+
+var state = 'menu';  // menu | select | play | cleared | won（跨关保持，菜单函数也要用）
+
+/* ================= 触屏检测（移动端降配置：关抗锯齿、限像素比、降阴影，防 context loss） ================= */
+var IS_TOUCH = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+
+/* ================= 错误 / 恢复页（3D 初始化失败不再白屏） ================= */
+var errEl = document.getElementById('errOverlay');
+var errMsgEl = document.getElementById('errMsg');
+var errRetryFn = null;
+function showErr(msg, retryFn) { errMsgEl.textContent = msg; errRetryFn = retryFn; errEl.style.display = 'flex'; }
+function hideErr() { errEl.style.display = 'none'; }
+function showFatal(err) {
+  var msg = '游戏启动失败，请重试或更换浏览器（推荐 Chrome / Edge）。';
+  try { if (err && err.message) msg += '（' + String(err.message).slice(0, 140) + '）'; } catch (e) {}
+  showErr(msg, function () { bootGame(curLevel); });
+}
+document.getElementById('btnErrRetry').addEventListener('click', function () {
+  hideErr();
+  if (errRetryFn) errRetryFn();
+});
+document.getElementById('btnErrMenu').addEventListener('click', function () {
+  hideErr();
+  showMenu();
+});
+/* 兜底：任何未捕获的脚本错误都给出错误页，避免白屏/半残状态 */
+addEventListener('error', function (e) {
+  if (!errEl || errEl.style.display === 'flex') return;
+  showErr('页面出了点问题：' + ((e && e.message) || '未知错误'), function () { location.reload(); });
+});
+
+/* ================= WebGL 能力预检 ================= */
+function webglOK() {
+  try {
+    var c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl'));
+  } catch (e) { return false; }
+}
+
+/* ================= HUD ================= */
+var app = document.getElementById('app'); // 画布容器（提升顶层：清理段会先用到，且不依赖浏览器 id 全局命名访问）
+var foodCountEl = document.getElementById('foodCount');
+var objEl = document.getElementById('objective');
+var toastEl = document.getElementById('toast');
+var coordsEl = document.getElementById('coords');
+var shelterArrowEl = document.getElementById('shelterArrow');
+var arrowIcon = document.getElementById('arrowIcon');
+var shelterDistEl = document.getElementById('shelterDist');
+var foodArrowEl = document.getElementById('foodArrow');
+var foodArrowIcon = document.getElementById('foodArrowIcon');
+var foodDistEl = document.getElementById('foodDist');
+var windArrowEl = document.getElementById('windArrow');
+var windArrowIcon = document.getElementById('windArrowIcon');
+var windLabel = document.getElementById('windLabel');
+var windDistEl = document.getElementById('windDist');
+var winOverlay = document.getElementById('winOverlay');
+var winText = document.getElementById('winText');
+var hudEl = document.getElementById('hud');
+var menuEl = document.getElementById('menuOverlay');
+var levelSelectEl = document.getElementById('levelSelectOverlay');
+var mmCanvas = document.getElementById('minimap');
+var mm = mmCanvas.getContext('2d');
+
+var toastT = 0;
+function toast(msg, dur) { toastEl.textContent = msg; toastEl.style.opacity = '1'; toastT = dur || 2.4; }
+
+/* ================= 菜单 / 选关 ================= */
+function showMenu() {
+  state = 'menu';
+  menuEl.style.display = 'flex';
+  levelSelectEl.style.display = 'none';
+  winOverlay.style.display = 'none';
+  hudEl.style.display = 'none';
+}
+function showLevelSelect() {
+  state = 'select';
+  renderLevelCards();
+  menuEl.style.display = 'none';
+  levelSelectEl.style.display = 'flex';
+  hudEl.style.display = 'none';
+}
+function renderLevelCards() {
+  var grid = document.getElementById('levelGrid');
+  grid.innerHTML = '';
+  for (var n = 1; n <= 5; n++) {
+    var lv = LEVELS[n];
+    var unlocked = (n === 1) || clearedSet.has(n - 1);
+    var cleared = clearedSet.has(n);
+    var d = document.createElement('div');
+    d.className = 'lvCard' + (unlocked ? '' : ' locked') + (cleared ? ' cleared' : '');
+    d.innerHTML = '<div class="lvNo">' + n + '</div>' +
+      '<div class="lvName">' + lv.name + '</div>' +
+      '<div class="lvDesc">' + lv.desc + '</div>' +
+      '<div class="lvStars">' + '★'.repeat(lv.star) + '</div>' +
+      '<div class="lvState">' + (!unlocked ? '🔒 未解锁' : (cleared ? '✓ 已通关' : '可挑战')) + '</div>';
+    if (unlocked) {
+      d.addEventListener('click', (function (nn) { return function () { startLevel(nn); }; })(n));
+    }
+    grid.appendChild(d);
+  }
+}
+/* 无刷新切关 / 重开 / 回菜单（手机浏览器 location.reload 切关不可靠） */
+function startLevel(n) {
+  try { location.hash = 'level=' + n; } catch (e) {} // 写 hash 保留“刷新后回到本关”能力，但不刷新
+  bootGame(n);
+}
+function backToMenu() {
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
+  bootGame(0); // 菜单场景（用第 1 关配置作背景）
+}
+if (!mmBound) { // 按钮只绑一次：bootGame 重复执行时不会重复绑定
+  mmBound = true;
+  document.getElementById('btnStart').addEventListener('click', showLevelSelect);
+  document.getElementById('btnBack').addEventListener('click', showMenu);
+  document.getElementById('btnNext').addEventListener('click', function () {
+    if (curLevel < 5) startLevel(curLevel + 1); else showLevelSelect();
+  });
+  document.getElementById('btnRetry').addEventListener('click', function () { bootGame(curLevel); });
+  document.getElementById('btnMenu').addEventListener('click', backToMenu);
+}
+
+/* 按关卡刷新 HUD 文案 */
+function refreshLevelUI() {
+  if (curLevel === 0) return;
+  document.getElementById('panelLevel').textContent = '🐄 哞哞庇护所 · 第一大关 第 ' + curLevel + ' 小关 · ' + L.name;
+  var objText = '目标：收集 5 份草料';
+  var hintText = (IS_TOUCH ? '👆 触摸草地移动小牛' : '🖱️ 点击草地移动小牛') + ' · 靠近草料自动收集';
+  if (L.asset) hintText += ' · ' + L.desc;
+  else hintText += ' · 树林会挡住去路';
+  if (L.rain) hintText += ' · 🌧 风雨交加';
+  if (L.tornado) hintText += ' · 🌀 小心龙卷风（卷住后要等风停）';
+  hintText += ' · 滚轮缩放 · R 重开 · M 静音';
+  document.getElementById('hint').textContent = hintText;
+  document.getElementById('objective').textContent = objText;
+}
+
 
 // ==GAME_START==
 function bootGame(__lv) {
@@ -251,10 +437,20 @@ state = curLevel > 0 ? 'play' : 'menu';
 foodCount = 0;
 shelter = null;
 startTime = performance.now();
+hideErr(); // 关掉上一局的错误页（若有）
 winOverlay.style.display = 'none';
-menuEl.style.display = 'none';
-levelSelectEl.style.display = 'none';
-hudEl.style.display = '';
+if (__lv > 0) {
+  menuEl.style.display = 'none';
+  levelSelectEl.style.display = 'none';
+  hudEl.style.display = '';
+} else {
+  menuEl.style.display = 'flex';   // 菜单页：菜单在前，HUD 藏起
+  levelSelectEl.style.display = 'none';
+  hudEl.style.display = 'none';
+}
+refreshLevelUI(); // HUD 文案按关卡刷新
+
+try { /* 3D 初始化全程保护：任何失败都走 catch 显示错误页，不再白屏 */
 
 /* ================= 工具 ================= */
 var TAU = Math.PI * 2;
@@ -286,21 +482,12 @@ var TORNADO_SUCK = 11;     // 卷入速度（每秒拉向风心的距离，> 小
 var TORNADO_SPIN = 15;     // 切向卷动速度（每秒绕风心转动的线速度）
 var TORNADO_LIFT = 7.5;    // 最高卷上天空的高度
 
-/* 通关记录（localStorage 可能不可用，兜底内存） */
-var clearedSet = new Set();
-try {
-  var rawCleared = localStorage.getItem('mm_cleared');
-  if (rawCleared) rawCleared.split(',').forEach(function (s) { var n = parseInt(s, 10); if (n) clearedSet.add(n); });
-} catch (e) {}
-function saveCleared() { try { localStorage.setItem('mm_cleared', Array.from(clearedSet).join(',')); } catch (e) {} }
 
-var state = curLevel > 0 ? 'play' : 'menu';  // menu | select | play | cleared | won
 var foodCount = 0;
 var shelter = null;      // { x, z, group }
 var startTime = performance.now();
 
 /* ================= 渲染基础 ================= */
-var app = document.getElementById('app');
 var scene = new THREE.Scene();
 var rainy = !!L.rain;
 if (rainy) {
@@ -311,15 +498,21 @@ if (rainy) {
   scene.fog = new THREE.Fog(0xcfe9dc, 70, 250);
 }
 
+if (!webglOK()) throw new Error('当前浏览器不支持 WebGL，无法运行 3D 画面');
 var camera = new THREE.PerspectiveCamera(46, innerWidth / innerHeight, 0.1, 700);
-var renderer = mmRenderer = new THREE.WebGLRenderer({ antialias: true });
+var renderer = mmRenderer = new THREE.WebGLRenderer({ antialias: !IS_TOUCH, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH ? 1.5 : 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.style.cursor = 'pointer';
 renderer.domElement.style.touchAction = 'none';
 app.appendChild(renderer.domElement);
+/* WebGL 画面丢失（移动端多为内存不足）：阻止默认行为，弹恢复页 */
+renderer.domElement.addEventListener('webglcontextlost', function (e) {
+  e.preventDefault();
+  showErr('WebGL 画面丢失（多为内存不足）。点“重试”重新开始本关。', function () { bootGame(curLevel); });
+}, { signal: mmAbort.signal });
 
 addEventListener('resize', function () {
   camera.aspect = innerWidth / innerHeight;
@@ -331,7 +524,7 @@ addEventListener('resize', function () {
 scene.add(new THREE.HemisphereLight(0xd8ecff, 0x77b255, rainy ? 0.55 : 0.9));
 var sun = new THREE.DirectionalLight(0xfff3d8, rainy ? 0.9 : 1.7);
 sun.castShadow = true;
-sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
 sun.shadow.camera.left = -75; sun.shadow.camera.right = 75;
 sun.shadow.camera.top = 75; sun.shadow.camera.bottom = -75;
 sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
@@ -474,27 +667,28 @@ for (var vi = 0; vi < TREE_COUNT; vi++) {
 if (oakLeaves.instanceColor) oakLeaves.instanceColor.needsUpdate = true;
 if (pineLeaves.instanceColor) pineLeaves.instanceColor.needsUpdate = true;
 
-function setTreeMatrix(tr) {
+function setTreeMatrix(tr, M) {
+  M = M || { t0: oakTrunks, l0: oakLeaves, t1: pineTrunks, l1: pineLeaves };
   var s = tr.s, x = tr.x, z = tr.z;
   dummy.rotation.set(0, tr.rot, 0);
   if (tr.type === 0) {
     var s0 = tr.slots;
     dummy.position.set(x, 0.95 * s, z); dummy.scale.setScalar(s); dummy.updateMatrix();
-    oakTrunks.setMatrixAt(s0[0], dummy.matrix);
+    M.t0.setMatrixAt(s0[0], dummy.matrix);
     dummy.position.set(x, 2.5 * s, z); dummy.scale.set(1.15 * s, 1.05 * s, 1.15 * s); dummy.updateMatrix();
-    oakLeaves.setMatrixAt(s0[1], dummy.matrix);
+    M.l0.setMatrixAt(s0[1], dummy.matrix);
     dummy.position.set(x + 0.55 * s, 3.35 * s, z - 0.35 * s); dummy.scale.setScalar(0.72 * s); dummy.updateMatrix();
-    oakLeaves.setMatrixAt(s0[2], dummy.matrix);
+    M.l0.setMatrixAt(s0[2], dummy.matrix);
   } else {
     var s1 = tr.slots;
     dummy.position.set(x, 0.7 * s, z); dummy.scale.setScalar(s); dummy.updateMatrix();
-    pineTrunks.setMatrixAt(s1[0], dummy.matrix);
+    M.t1.setMatrixAt(s1[0], dummy.matrix);
     dummy.position.set(x, 1.5 * s, z); dummy.scale.setScalar(s); dummy.updateMatrix();
-    pineLeaves.setMatrixAt(s1[1], dummy.matrix);
+    M.l1.setMatrixAt(s1[1], dummy.matrix);
     dummy.position.set(x, 2.35 * s, z); dummy.scale.setScalar(0.78 * s); dummy.updateMatrix();
-    pineLeaves.setMatrixAt(s1[2], dummy.matrix);
+    M.l1.setMatrixAt(s1[2], dummy.matrix);
     dummy.position.set(x, 3.15 * s, z); dummy.scale.setScalar(0.55 * s); dummy.updateMatrix();
-    pineLeaves.setMatrixAt(s1[3], dummy.matrix);
+    M.l1.setMatrixAt(s1[3], dummy.matrix);
   }
 }
 
@@ -531,37 +725,61 @@ function queryTrees(x, z, r) {
   return res;
 }
 
-/* ================= 河流 / 小桥 ================= */
-/* 河：直线带，中心线 nx*x + nz*z = c（n 为单位法向），宽 w；dir=(nz,-nx) 为沿河方向 */
-var rivers = [];
-var bridges = [];
-function makeRiver(ang, px, pz, w) {
-  return {
-    nx: -Math.sin(ang), nz: Math.cos(ang),
-    c: -Math.sin(ang) * px + Math.cos(ang) * pz,
-    w: w, ang: ang, dx: Math.cos(ang), dz: Math.sin(ang)
-  };
-}
-function riverPointAt(rv, t) { // 中心线上参数 t 处的点（垂足 = 法向 × c）
-  var px = rv.nx * rv.c, pz = rv.nz * rv.c;
-  return { x: px + rv.dx * t, z: pz + rv.dz * t };
-}
+/* ================= 水域 / 小桥 / 素材迷宫 =================
+ * 统一迷宫：递归回溯挖出迷宫结构，再把「墙」做成河流或树木，
+ * 把「通道」做成小桥（跨河）或空地。水=waterZones(AABB)，桥=bridgeZones(AABB)，
+ * 树墙=树木实例 + wallGrid(AABB)。不再单独生成河流与盒式迷宫。 */
+var waterZones = [];   // 水域 AABB {x1,z1,x2,z2}
+var bridgeZones = [];  // 桥面 AABB
+var waterMats = [];    // 水面材质（流动动画）
+var mazeTrees = [];    // 迷宫树木（fixed：不随小牛回卷）
+
 function inWater(x, z) {
-  for (var i = 0; i < rivers.length; i++) {
-    var rv = rivers[i];
-    if (Math.abs(rv.nx * x + rv.nz * z - rv.c) < rv.w / 2 - 0.2) return true;
+  for (var i = 0; i < waterZones.length; i++) {
+    var w = waterZones[i];
+    if (x > w.x1 && x < w.x2 && z > w.z1 && z < w.z2) return true;
   }
   return false;
 }
 function onBridge(x, z) {
-  for (var i = 0; i < bridges.length; i++) {
-    var b = bridges[i];
-    var dx = x - b.x, dz = z - b.z;
-    var l = dx * b.dx + dz * b.dz;   // 沿河方向
-    var p = -dx * b.nx - dz * b.nz;  // 垂直法向
-    if (Math.abs(l) < b.w / 2 && Math.abs(p) < b.rw / 2 + 1.6) return true;
+  for (var i = 0; i < bridgeZones.length; i++) {
+    var b = bridgeZones[i];
+    if (x > b.x1 - 0.35 && x < b.x2 + 0.35 && z > b.z1 - 0.35 && z < b.z2 + 0.35) return true;
   }
   return false;
+}
+/* 把点推出水域：沿最小穿透方向上岸，且岸不能在水中/树墙里 */
+function pushOutOfWater(x, z) {
+  for (var i = 0; i < waterZones.length; i++) {
+    var w = waterZones[i];
+    if (x > w.x1 && x < w.x2 && z > w.z1 && z < w.z2) {
+      var cands = [
+        { x: w.x1 - 0.7, z: z }, { x: w.x2 + 0.7, z: z },
+        { x: x, z: w.z1 - 0.7 }, { x: x, z: w.z2 + 0.7 }
+      ];
+      for (var c = 0; c < cands.length; c++) {
+        if (!inWater(cands[c].x, cands[c].z) && !(maze && queryWalls(cands[c].x, cands[c].z, 0.25).length > 0)) return cands[c];
+      }
+      // 四邻被水/树墙占住（密树迷宫可能出现）：扫描迷宫网格，移到最近可站立格
+      if (maze) {
+        var bx = null, bz = null, bd = 1e9;
+        for (var gi = 0; gi < maze.gw; gi++) {
+          for (var gj = 0; gj < maze.gh; gj++) {
+            var ccx = maze.gx(gi), ccz = maze.gz(gj);
+            if (queryWalls(ccx, ccz, 0.02).length || inWater(ccx, ccz)) continue;
+            var dd = (ccx - x) * (ccx - x) + (ccz - z) * (ccz - z);
+            if (dd < bd) { bd = dd; bx = ccx; bz = ccz; }
+          }
+        }
+        if (bx !== null) return { x: bx, z: bz };
+      }
+      for (var c2 = 0; c2 < cands.length; c2++) {
+        if (!inWater(cands[c2].x, cands[c2].z)) return cands[c2];
+      }
+      return cands[0];
+    }
+  }
+  return null;
 }
 function makeWaterTexture() {
   var c = document.createElement('canvas'); c.width = 128; c.height = 128;
@@ -582,87 +800,277 @@ function makeWaterTexture() {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-function buildRiverMesh(rv) {
-  var g = new THREE.Group();
-  var mat = new THREE.MeshStandardMaterial({
-    map: makeWaterTexture(), color: 0x9fd4f5, transparent: true, opacity: 0.85,
-    roughness: 0.15, metalness: 0.25
-  });
-  var m = new THREE.Mesh(new THREE.PlaneGeometry(2400, rv.w), mat);
-  m.rotation.x = -Math.PI / 2;
-  g.add(m);
-  g.rotation.y = rv.ang;
-  scene.add(g);
-  return { group: g, mat: mat };
-}
-function buildBridge(b) {
-  var g = new THREE.Group();
-  var woodMat = new THREE.MeshStandardMaterial({ color: 0xa9763f, roughness: 1 });
-  var darkMat = new THREE.MeshStandardMaterial({ color: 0x7d5427, roughness: 1 });
-  var deck = new THREE.Mesh(new THREE.BoxGeometry(b.w, 0.24, b.rw + 2.4), woodMat);
-  deck.position.y = 0.32; deck.castShadow = true; deck.receiveShadow = true;
-  g.add(deck);
-  // 栏杆（沿长度两侧）
-  for (var s = -1; s <= 1; s += 2) {
-    var rail = new THREE.Mesh(new THREE.BoxGeometry(b.w, 0.14, 0.14), darkMat);
-    rail.position.set(0, 0.85, s * (b.rw / 2 + 1.1));
-    g.add(rail);
-    for (var k = -2; k <= 2; k++) {
-      var post = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.85, 0.16), darkMat);
-      post.position.set(k * b.w / 5, 0.68, s * (b.rw / 2 + 1.1));
-      g.add(post);
+
+/* ================= 素材迷宫生成 =================
+ * 网格：房间在奇/奇交叉点；房间之间的 EDGE 格打通=通道、未打通=墙。
+ * 河带（bands 指定的网格线）上的墙格=水域、通道格=小桥；
+ * 其余墙格=树墙（树木实例 + AABB），其余通道格=空地。 */
+function buildAssetMaze(cfg) {
+  var rw = cfg.rw, rh = cfg.rh, cell = cfg.cell;
+  var bands = cfg.bands || [], braid = cfg.braid || 0;
+  var GW = rw * 2 + 1, GH = rh * 2 + 1;
+  var MZ0 = -34;                                    // 迷宫北边缘 z（入口一侧）
+  function gx(i) { return (i - (GW - 1) / 2) * cell; }  // 网格列中心 x
+  function gz(j) { return MZ0 - j * cell; }            // 网格行中心 z（向南加深）
+  function isBandCell(i, j) {
+    for (var b = 0; b < bands.length; b++) {
+      if (bands[b].axis === 'h' && j === bands[b].at) return true;
+      if (bands[b].axis === 'v' && i === bands[b].at) return true;
     }
+    return false;
   }
-  g.position.set(b.x, 0, b.z);
-  g.rotation.y = b.ang;
-  scene.add(g);
-  return g;
-}
-if (L.rivers > 0) {
-  if (curLevel === 3) {
-    // 第 3 关：6 条平行窄河，各有一座桥，桥上下对齐成一条"桥路"
-    var ang3 = rand(-0.08, 0.08);
-    for (var ei = 0; ei < L.rivers; ei++) {
-      var rv3 = makeRiver(ang3, 0, -30 - ei * 24, 8);
-      rv3.mesh = buildRiverMesh(rv3);
-      rivers.push(rv3);
-      var p0 = riverPointAt(rv3, 0);
-      var b3 = {
-        x: p0.x, z: p0.z, ang: ang3, w: 7, rw: rv3.w,
-        nx: rv3.nx, nz: rv3.nz, dx: rv3.dx, dz: rv3.dz
-      };
-      buildBridge(b3);
-      bridges.push(b3);
-    }
-  } else if (L.maze) {
-    // 第 4/5 关：迷宫外一条宽河 + 一座小桥
-    var rvM = makeRiver(0, 0, -20, 12);
-    rvM.mesh = buildRiverMesh(rvM);
-    rivers.push(rvM);
-    var pM = riverPointAt(rvM, 0);
-    var bM = { x: pM.x, z: pM.z, ang: 0, w: 8, rw: rvM.w, nx: rvM.nx, nz: rvM.nz, dx: rvM.dx, dz: rvM.dz };
-    buildBridge(bM);
-    bridges.push(bM);
-  } else {
-    // 第 2 关：2 条宽河，每条 3 座桥（沿河间距 55，不超过一个屏幕）
-    var ang2 = rand(-0.12, 0.12);
-    for (var di = 0; di < L.rivers; di++) {
-      var rv2 = makeRiver(ang2, 0, -42 - di * 55, 14);
-      rv2.mesh = buildRiverMesh(rv2);
-      rivers.push(rv2);
-      for (var bi2 = -1; bi2 <= 1; bi2++) {
-        var pb = riverPointAt(rv2, bi2 * 55);
-        var bb = { x: pb.x, z: pb.z, ang: ang2, w: 8, rw: rv2.w, nx: rv2.nx, nz: rv2.nz, dx: rv2.dx, dz: rv2.dz };
-        buildBridge(bb);
-        bridges.push(bb);
+  // wall[i][j]：true=墙。房间格(奇,奇)永为通路；其余初始为墙
+  var wall = [];
+  for (var i = 0; i < GW; i++) {
+    wall[i] = [];
+    for (var j = 0; j < GH; j++) wall[i][j] = !(i % 2 === 1 && j % 2 === 1);
+  }
+  var rc = rw >> 1;                 // 入口房间列
+  wall[rc * 2 + 1][0] = false;      // 北边界开口
+
+  // —— 递归回溯挖迷宫 ——
+  var visited = [];
+  for (var i2 = 0; i2 < rw; i2++) { visited[i2] = []; for (var j2 = 0; j2 < rh; j2++) visited[i2][j2] = false; }
+  var stack = [{ i: rc, j: 0 }];
+  visited[rc][0] = true;
+  while (stack.length) {
+    var cur = stack[stack.length - 1];
+    var nb = [];
+    if (cur.j > 0 && !visited[cur.i][cur.j - 1]) nb.push({ i: cur.i, j: cur.j - 1 });
+    if (cur.i < rw - 1 && !visited[cur.i + 1][cur.j]) nb.push({ i: cur.i + 1, j: cur.j });
+    if (cur.j < rh - 1 && !visited[cur.i][cur.j + 1]) nb.push({ i: cur.i, j: cur.j + 1 });
+    if (cur.i > 0 && !visited[cur.i - 1][cur.j]) nb.push({ i: cur.i - 1, j: cur.j });
+    if (!nb.length) { stack.pop(); continue; }
+    var nxt = nb[(Math.random() * nb.length) | 0];
+    wall[cur.i + nxt.i + 1][cur.j + nxt.j + 1] = false;  // 打通两房之间的 EDGE 格
+    visited[nxt.i][nxt.j] = true;
+    stack.push(nxt);
+  }
+  // —— 死路疏通（braid）：随机多开口，低层关更开阔 ——
+  if (braid > 0) {
+    for (var bi = 0; bi < rw; bi++) {
+      for (var bj = 0; bj < rh; bj++) {
+        var nbs = [[bi, bj - 1], [bi + 1, bj], [bi, bj + 1], [bi - 1, bj]];
+        var open = 0, closed = [];
+        for (var k = 0; k < 4; k++) {
+          var ni = nbs[k][0], nj = nbs[k][1];
+          if (ni < 0 || ni >= rw || nj < 0 || nj >= rh) continue;
+          if (!wall[bi + ni + 1][bj + nj + 1]) open++; else closed.push(nbs[k]);
+        }
+        if (open <= 1 && closed.length && Math.random() < braid) {
+          var pick = closed[(Math.random() * closed.length) | 0];
+          wall[bi + pick[0] + 1][bj + pick[1] + 1] = false;
+        }
       }
     }
   }
+  // —— 每条河带至少一座桥（保证两岸连通）——
+  for (var bd2 = 0; bd2 < bands.length; bd2++) {
+    var band = bands[bd2];
+    var hasBridge = false, spots = [];
+    if (band.axis === 'h') {
+      for (var xi = 1; xi < GW; xi += 2) { spots.push(xi); if (!wall[xi][band.at]) hasBridge = true; }
+      if (!hasBridge) wall[spots[(Math.random() * spots.length) | 0]][band.at] = false;
+    } else {
+      for (var yj = 1; yj < GH; yj += 2) { spots.push(yj); if (!wall[band.at][yj]) hasBridge = true; }
+      if (!hasBridge) wall[band.at][spots[(Math.random() * spots.length) | 0]] = false;
+    }
+  }
+  // —— BFS 可达房间（带步数）——
+  var seen = [];
+  for (var i3 = 0; i3 < rw; i3++) { seen[i3] = []; for (var j3 = 0; j3 < rh; j3++) seen[i3][j3] = false; }
+  var reach = [], q = [{ i: rc, j: 0, d: 0 }];
+  seen[rc][0] = true;
+  while (q.length) {
+    var c = q.shift();
+    reach.push({ i: c.i, j: c.j, d: c.d, x: gx(c.i * 2 + 1), z: gz(c.j * 2 + 1) });
+    var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    for (var k2 = 0; k2 < 4; k2++) {
+      var ni2 = c.i + dirs[k2][0], nj2 = c.j + dirs[k2][1];
+      if (ni2 < 0 || ni2 >= rw || nj2 < 0 || nj2 >= rh) continue;
+      if (seen[ni2][nj2]) continue;
+      if (wall[c.i + ni2 + 1][c.j + nj2 + 1]) continue;
+      seen[ni2][nj2] = true;
+      q.push({ i: ni2, j: nj2, d: c.d + 1 });
+    }
+  }
+  // —— 庇护所房间：步数最远且四邻不贴河带（谷仓放得下）——
+  function bandAdjacent(i, j) {
+    return isBandCell(i * 2 + 1, j * 2) || isBandCell(i * 2 + 1, j * 2 + 2) ||
+           isBandCell(i * 2, j * 2 + 1) || isBandCell(i * 2 + 2, j * 2 + 1);
+  }
+  var shelterRoom = null;
+  for (var si = 0; si < reach.length; si++) {
+    var rr = reach[si];
+    if (!bandAdjacent(rr.i, rr.j) && (!shelterRoom || rr.d > shelterRoom.d)) shelterRoom = rr;
+  }
+  if (!shelterRoom) shelterRoom = reach[reach.length - 1];
+
+  // —— 材质化：遍历网格，墙->水/树，通道->桥/空地 ——
+  var wallAABBs = [], treeSpecs = [], waterCells = [], bridgeCells = [];
+  for (var gi = 0; gi < GW; gi++) {
+    for (var gj = 0; gj < GH; gj++) {
+      var cx = gx(gi), cz = gz(gj);
+      var aabb = { x1: cx - cell / 2, z1: cz - cell / 2, x2: cx + cell / 2, z2: cz + cell / 2 };
+      var onBand = isBandCell(gi, gj);
+      if (wall[gi][gj]) {
+        if (onBand) waterCells.push(aabb);
+        else { wallAABBs.push(aabb); treeSpecs.push({ aabb: aabb, corner: (gi % 2 === 0 && gj % 2 === 0) }); }
+      } else if (onBand) {
+        var ax = 'h';
+        for (var bd4 = 0; bd4 < bands.length; bd4++) {
+          if (bands[bd4].axis === 'v' && gi === bands[bd4].at) ax = 'v';
+        }
+        bridgeCells.push({ aabb: aabb, axis: ax });
+      }
+    }
+  }
+  // 树墙：每格 2-4 棵树（fixed，不回卷），AABB 保证真挡住
+  var specs = [], mOakN = 0, mPineN = 0;
+  for (var ti = 0; ti < treeSpecs.length; ti++) {
+    var a = treeSpecs[ti].aabb;
+    var n = treeSpecs[ti].corner ? 2 + ((Math.random() * 2) | 0) : 3 + ((Math.random() * 2) | 0);
+    for (var t2 = 0; t2 < n; t2++) {
+      var spec = {
+        x: (a.x1 + a.x2) / 2 + (Math.random() - 0.5) * cell * 0.6,
+        z: (a.z1 + a.z2) / 2 + (Math.random() - 0.5) * cell * 0.6,
+        s: rand(0.85, 1.2), rot: rand(0, TAU),
+        type: Math.random() < 0.55 ? 0 : 1
+      };
+      spec.r = 0.62 * spec.s;
+      specs.push(spec);
+      if (spec.type === 0) mOakN++; else mPineN++;
+    }
+  }
+  var mazeMeshes = {
+    t0: new THREE.InstancedMesh(new THREE.CylinderGeometry(0.26, 0.42, 1.9, 7), trunkMat, Math.max(1, mOakN)),
+    l0: new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1.7, 0), oakLeafMat, Math.max(1, mOakN * 2)),
+    t1: new THREE.InstancedMesh(new THREE.CylinderGeometry(0.22, 0.34, 1.4, 6), trunkMat, Math.max(1, mPineN)),
+    l1: new THREE.InstancedMesh(new THREE.ConeGeometry(1.6, 3.0, 7), pineLeafMat, Math.max(1, mPineN * 3))
+  };
+  [mazeMeshes.t0, mazeMeshes.l0, mazeMeshes.t1, mazeMeshes.l1].forEach(function (m) {
+    m.castShadow = true; m.receiveShadow = true;
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false;
+    scene.add(m);
+  });
+  var oakI2 = 0, oakL2 = 0, pineI2 = 0, pineL2 = 0;
+  for (var mi = 0; mi < specs.length; mi++) {
+    var sp = specs[mi];
+    if (sp.type === 0) { sp.slots = [oakI2, oakL2, oakL2 + 1]; oakI2++; oakL2 += 2; }
+    else { sp.slots = [pineI2, pineL2, pineL2 + 1, pineL2 + 2]; pineI2++; pineL2 += 3; }
+  }
+  var tmpColor2 = new THREE.Color();
+  for (var ci = 0; ci < specs.length; ci++) {
+    var sp2 = specs[ci];
+    if (sp2.type === 0) {
+      var cA = tmpColor2.setHex(0x4e9e45).offsetHSL(rand(-0.035, 0.035), rand(-0.06, 0.06), rand(-0.09, 0.09));
+      mazeMeshes.l0.setColorAt(sp2.slots[1], cA);
+      mazeMeshes.l0.setColorAt(sp2.slots[2], cA.clone().offsetHSL(0, 0, rand(-0.04, 0.04)));
+    } else {
+      var cB = tmpColor2.setHex(0x3e8a4f).offsetHSL(rand(-0.03, 0.03), rand(-0.06, 0.06), rand(-0.09, 0.09));
+      mazeMeshes.l1.setColorAt(sp2.slots[1], cB);
+      mazeMeshes.l1.setColorAt(sp2.slots[2], cB.clone().offsetHSL(0, 0, 0.03));
+      mazeMeshes.l1.setColorAt(sp2.slots[3], cB.clone().offsetHSL(0, 0, 0.06));
+    }
+  }
+  if (mazeMeshes.l0.instanceColor) mazeMeshes.l0.instanceColor.needsUpdate = true;
+  if (mazeMeshes.l1.instanceColor) mazeMeshes.l1.instanceColor.needsUpdate = true;
+  for (var si2 = 0; si2 < specs.length; si2++) {
+    var sp3 = specs[si2];
+    sp3.fixed = true;
+    setTreeMatrix(sp3, mazeMeshes);
+    trees.push(sp3);
+    gridAdd(sp3);
+    mazeTrees.push(sp3);
+  }
+  [mazeMeshes.t0, mazeMeshes.l0, mazeMeshes.t1, mazeMeshes.l1].forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
+  for (var wi = 0; wi < wallAABBs.length; wi++) wallGridAdd(wallAABBs[wi]);
+  for (var wc = 0; wc < waterCells.length; wc++) waterZones.push(waterCells[wc]);
+
+  // 水面渲染：每条河带把连续水域格合并成一个个长条面片
+  var waterMat = new THREE.MeshStandardMaterial({
+    map: makeWaterTexture(), color: 0x9fd4f5, transparent: true, opacity: 0.88,
+    roughness: 0.15, metalness: 0.25
+  });
+  waterMats.push(waterMat);
+  for (var bd3 = 0; bd3 < bands.length; bd3++) {
+    var band3 = bands[bd3];
+    var run = null;
+    var flush = function () {
+      if (!run) return;
+      var len = run.n * cell;
+      var cxm, czm;
+      if (band3.axis === 'h') { cxm = (run.a0 + run.a1) / 2; czm = gz(band3.at); }
+      else { cxm = gx(band3.at); czm = (run.a0 + run.a1) / 2; }
+      var geo = band3.axis === 'h'
+        ? new THREE.PlaneGeometry(len, cell * 0.98)
+        : new THREE.PlaneGeometry(cell * 0.98, len);
+      var plane = new THREE.Mesh(geo, waterMat);
+      plane.rotation.x = -Math.PI / 2;
+      plane.position.set(cxm, 0.04, czm);
+      scene.add(plane);
+      run = null;
+    };
+    if (band3.axis === 'h') {
+      for (var xi2 = 0; xi2 < GW; xi2++) {
+        if (wall[xi2][band3.at]) {
+          if (!run) run = { a0: gx(xi2) - cell / 2, a1: gx(xi2) + cell / 2, n: 1 };
+          else { run.a1 = gx(xi2) + cell / 2; run.n++; }
+        } else flush();
+      }
+      flush();
+    } else {
+      for (var yj2 = 0; yj2 < GH; yj2++) {
+        if (wall[band3.at][yj2]) {
+          if (!run) run = { a0: gz(yj2) - cell / 2, a1: gz(yj2) + cell / 2, n: 1 };
+          else { run.a1 = gz(yj2) + cell / 2; run.n++; }
+        } else flush();
+      }
+      flush();
+    }
+  }
+  // 桥面：河带上的通道格 = 木板桥（栏杆沿行走方向）
+  var woodMat = new THREE.MeshStandardMaterial({ color: 0xa9763f, roughness: 1 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x7d5427, roughness: 1 });
+  for (var bc = 0; bc < bridgeCells.length; bc++) {
+    var bcell = bridgeCells[bc];
+    bridgeZones.push(bcell.aabb);
+    var g = new THREE.Group();
+    var deck = new THREE.Mesh(new THREE.BoxGeometry(cell, 0.26, cell), woodMat);
+    deck.position.y = 0.34; deck.castShadow = true; deck.receiveShadow = true;
+    g.add(deck);
+    for (var s3 = -1; s3 <= 1; s3 += 2) {
+      var railGeo = bcell.axis === 'h'
+        ? new THREE.BoxGeometry(0.13, 0.13, cell)
+        : new THREE.BoxGeometry(cell, 0.13, 0.13);
+      var rail = new THREE.Mesh(railGeo, darkMat);
+      if (bcell.axis === 'h') rail.position.set(0, 0.78, s3 * (cell / 2 - 0.18));
+      else rail.position.set(s3 * (cell / 2 - 0.18), 0.78, 0);
+      g.add(rail);
+      for (var p = -2; p <= 2; p++) {
+        var post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.72, 0.14), darkMat);
+        if (bcell.axis === 'h') post.position.set(p * cell / 5, 0.62, s3 * (cell / 2 - 0.18));
+        else post.position.set(s3 * (cell / 2 - 0.18), 0.62, p * cell / 5);
+        g.add(post);
+      }
+    }
+    g.position.set((bcell.aabb.x1 + bcell.aabb.x2) / 2, 0, (bcell.aabb.z1 + bcell.aabb.z2) / 2);
+    scene.add(g);
+  }
+  return {
+    gw: GW, gh: GH, cell: cell, gx: gx, gz: gz,
+    reachable: reach,
+    shelterRoom: { x: shelterRoom.x, z: shelterRoom.z, i: shelterRoom.i, j: shelterRoom.j, d: shelterRoom.d },
+    entrance: { x: gx(rc * 2 + 1), z: MZ0 + cell * 1.6 },
+    wallCount: wallAABBs.length, bridgeCount: bridgeCells.length, waterCount: waterCells.length
+  };
 }
 
-/* ================= 迷宫（第 4/5 关） ================= */
-var maze = null;   // { cols, rows, cell, walls:[AABB], reachable:[{x,z}], enter:{i,j} }
-var wallGrid = new Map();
+/* ================= 迷宫（素材迷宫） ================= */
+var maze = null;   // { gw, gh, cell, gx, gz, reachable:[{x,z,d}], shelterRoom:{x,z}, entrance:{x,z} }
+var wallGrid = new Map();  // 迷宫树墙 AABB 空间哈希
+
 var WCELL = 10;
 function wallGridAdd(w) {
   var cx1 = Math.floor(w.x1 / WCELL), cx2 = Math.floor(w.x2 / WCELL);
@@ -687,124 +1095,43 @@ function queryWalls(x, z, r) {
   }
   return res;
 }
-function buildMaze() {
-  var cols = 13, rows = 13, cell = 7;
-  var m = { cols: cols, rows: rows, cell: cell, walls: [], enter: { i: 6, j: 0 } };
-  // 每格四壁 1=有墙；递归回溯挖迷宫
-  var g = [];
-  for (var i = 0; i < cols; i++) { g[i] = []; for (var j = 0; j < rows; j++) g[i][j] = { n: 1, e: 1, s: 1, w: 1, v: 0 }; }
-  var stack = [{ i: 6, j: 0 }];
-  g[6][0].v = 1;
-  while (stack.length) {
-    var cur = stack[stack.length - 1];
-    var nb = [];
-    // 方向标记与墙 AABB 公式统一：.n 墙在 gz-cell/2（更负侧，通向 j+1）；.s 墙在 gz+cell/2（更正侧，通向 j-1）
-    if (cur.j > 0 && !g[cur.i][cur.j - 1].v) nb.push({ i: cur.i, j: cur.j - 1, d: 's' });
-    if (cur.i < cols - 1 && !g[cur.i + 1][cur.j].v) nb.push({ i: cur.i + 1, j: cur.j, d: 'e' });
-    if (cur.j < rows - 1 && !g[cur.i][cur.j + 1].v) nb.push({ i: cur.i, j: cur.j + 1, d: 'n' });
-    if (cur.i > 0 && !g[cur.i - 1][cur.j].v) nb.push({ i: cur.i - 1, j: cur.j, d: 'w' });
-    if (!nb.length) { stack.pop(); continue; }
-    var nxt = nb[(Math.random() * nb.length) | 0];
-    if (nxt.d === 'n') { g[cur.i][cur.j].n = 0; g[nxt.i][nxt.j].s = 0; }
-    if (nxt.d === 's') { g[cur.i][cur.j].s = 0; g[nxt.i][nxt.j].n = 0; }
-    if (nxt.d === 'e') { g[cur.i][cur.j].e = 0; g[nxt.i][nxt.j].w = 0; }
-    if (nxt.d === 'w') { g[cur.i][cur.j].w = 0; g[nxt.i][nxt.j].e = 0; }
-    g[nxt.i][nxt.j].v = 1;
-    stack.push(nxt);
-  }
-  // 入口：北面（朝向起点一侧，z=-45）开口——即 (6,0) 的 s 墙
-  g[6][0].s = 0;
-  // BFS 可达格（带步数）
-  var reach = [];
-  var q = [{ i: 6, j: 0, d: 0 }];
-  g[6][0].v = 2;
-  while (q.length) {
-    var c2 = q.shift();
-    reach.push({ i: c2.i, j: c2.j, d: c2.d, x: gx(c2.i), z: gz(c2.j) });
-    var cellDirs = [[0, -1, 's'], [1, 0, 'e'], [0, 1, 'n'], [-1, 0, 'w']];
-    for (var k2 = 0; k2 < 4; k2++) {
-      var ni2 = c2.i + cellDirs[k2][0], nj2 = c2.j + cellDirs[k2][1];
-      if (ni2 < 0 || ni2 >= cols || nj2 < 0 || nj2 >= rows) continue;
-      if (g[ni2][nj2].v === 2) continue;
-      if (g[c2.i][c2.j][cellDirs[k2][2]]) continue;
-      g[ni2][nj2].v = 2;
-      q.push({ i: ni2, j: nj2, d: c2.d + 1 });
-    }
-  }
-  // 庇护所放在步数最远的可达格，并拆掉该格四壁（谷仓放得下）
-  var sc = reach[0];
-  for (var ri2 = 0; ri2 < reach.length; ri2++) if (reach[ri2].d > sc.d) sc = reach[ri2];
-  m.shelterCell = { i: sc.i, j: sc.j, x: sc.x, z: sc.z, d: sc.d };
-  g[sc.i][sc.j].n = g[sc.i][sc.j].e = g[sc.i][sc.j].s = g[sc.i][sc.j].w = 0;
-  // sc.s 墙由北邻格的 n 收取、sc.e 墙由东邻格的 w 收取，需一并清零
-  if (sc.j > 0) g[sc.i][sc.j - 1].n = 0;
-  if (sc.i < cols - 1) g[sc.i + 1][sc.j].w = 0;
-  // 收集墙 AABB：每面墙只收一次——所有格的北墙(n)+西墙(w)，入口边界补(s)，东边界补(e)
-  // （n 墙在 gz-cell/2 更负侧；s 墙在 gz+cell/2 更正侧；(i,j).n = (i,j+1).s 为同一面墙）
-  function gx(i) { return (i - 6) * cell; }
-  function gz(j) { return -48.5 - j * cell; }
-  for (var ii = 0; ii < cols; ii++) {
-    for (var jj = 0; jj < rows; jj++) {
-      if (g[ii][jj].n) m.walls.push({ x1: gx(ii) - cell / 2 - 0.45, z1: gz(jj) - cell / 2 - 0.45, x2: gx(ii) + cell / 2 + 0.45, z2: gz(jj) - cell / 2 + 0.45 });
-      if (g[ii][jj].w) m.walls.push({ x1: gx(ii) - cell / 2 - 0.45, z1: gz(jj) - cell / 2 - 0.45, x2: gx(ii) - cell / 2 + 0.45, z2: gz(jj) + cell / 2 + 0.45 });
-      if (g[ii][jj].s && jj === 0) m.walls.push({ x1: gx(ii) - cell / 2 - 0.45, z1: gz(jj) + cell / 2 - 0.45, x2: gx(ii) + cell / 2 + 0.45, z2: gz(jj) + cell / 2 + 0.45 });
-      if (g[ii][jj].e && ii === cols - 1) m.walls.push({ x1: gx(ii) + cell / 2 - 0.45, z1: gz(jj) - cell / 2 - 0.45, x2: gx(ii) + cell / 2 + 0.45, z2: gz(jj) + cell / 2 + 0.45 });
-    }
-  }
-  // 墙体实例化渲染
-  var wallMesh = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1, 1, 1),
-    new THREE.MeshStandardMaterial({ color: 0x9b8b6f, roughness: 1 }),
-    m.walls.length
-  );
-  wallMesh.castShadow = true; wallMesh.receiveShadow = true;
-  wallMesh.frustumCulled = false;
-  var d2 = new THREE.Object3D();
-  for (var wi = 0; wi < m.walls.length; wi++) {
-    var w = m.walls[wi];
-    d2.position.set((w.x1 + w.x2) / 2, 1.4, (w.z1 + w.z2) / 2);
-    d2.scale.set(w.x2 - w.x1, 2.8, w.z2 - w.z1);
-    d2.updateMatrix();
-    wallMesh.setMatrixAt(wi, d2.matrix);
-    wallGridAdd(w);
-  }
-  wallMesh.instanceMatrix.needsUpdate = true;
-  scene.add(wallMesh);
-  m.reachable = reach;
-  return m;
-}
-if (L.maze) maze = buildMaze();
+if (L.asset) maze = buildAssetMaze(L.asset);
 
 /* ================= 通用阻挡判定 ================= */
-function inMazeZone(x, z) {
-  if (!maze) return false;
-  return x > -50 && x < 50 && z > -136 && z < -8;
+/* 回卷树木生成点专用：避水/桥/迷宫墙 */
+function spawnBlocked(x, z) {
+  if (waterZones.length && inWater(x, z)) return true;
+  if (bridgeZones.length && onBridge(x, z)) return true;
+  if (maze && queryWalls(x, z, 1.5).length > 0) return true;
+  return false;
 }
 function blocked(x, z) {
   if (queryTrees(x, z, COW_R).length > 0) return true;
   if (maze && queryWalls(x, z, COW_R).length > 0) return true;
-  if (rivers.length && inWater(x, z) && !onBridge(x, z)) return true;
+  if (waterZones.length && inWater(x, z) && !onBridge(x, z)) return true;
   return false;
 }
 /* 生成点专用：树/墙/水/桥 全避开 */
 function zoneBlocked(x, z, r) {
   if (queryTrees(x, z, r).length > 0) return true;
   if (maze && queryWalls(x, z, r).length > 0) return true;
-  if (rivers.length && inWater(x, z)) return true;
-  if (bridges.length && onBridge(x, z)) return true;
+  if (waterZones.length && inWater(x, z)) return true;
+  if (bridgeZones.length && onBridge(x, z)) return true;
   return false;
 }
 
-/* 树初始放置避开迷宫区与河流 */
+/* 树初始放置避开迷宫墙体/水域/小桥与入口走廊 */
 for (var tpi = 0; tpi < TREE_COUNT; tpi++) {
   var tpt = trees[tpi], tries = 0;
-  while (tries < 30 && ((L.maze && inMazeZone(tpt.x, tpt.z)) || (rivers.length && inWater(tpt.x, tpt.z)))) {
+  while (tries < 40 && (zoneBlocked(tpt.x, tpt.z, 1.2) ||
+      (maze && maze.entrance && dist2(tpt.x, tpt.z, maze.entrance.x, maze.entrance.z) < 49))) {
     var aa = rand(0, TAU), dd = rand(15, TREE_WRAP - 5);
     tpt.x = Math.cos(aa) * dd; tpt.z = Math.sin(aa) * dd;
     tries++;
   }
 }
 for (var mi = 0; mi < TREE_COUNT; mi++) { setTreeMatrix(trees[mi]); gridAdd(trees[mi]); }
+
 [oakTrunks, oakLeaves, pineTrunks, pineLeaves].forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
 
 /* ================= 小牛 ================= */
@@ -1088,9 +1415,9 @@ function onAllFoodCollected() {
   document.getElementById('objective').textContent = '庇护所即将出现…';
   later(1.4, function () {
     var x = 0, z = 0;
-    if (maze && maze.shelterCell) {
-      // 迷宫关：庇护所固定在步数最远的可达格（已拆墙，谷仓放得下）
-      x = maze.shelterCell.x; z = maze.shelterCell.z;
+    if (maze && maze.shelterRoom) {
+      // 迷宫关：庇护所固定在步数最远且不贴河带的房间
+      x = maze.shelterRoom.x; z = maze.shelterRoom.z;
     } else {
       var ok = false;
       for (var a = 0; a < 30 && !ok; a++) {
@@ -1101,6 +1428,7 @@ function onAllFoodCollected() {
       }
     }
     shelter = { x: x, z: z, group: buildBarn() };
+    if (maze) shelter.group.scale.setScalar(0.8); // 迷宫房间内缩小谷仓
     shelter.group.position.set(x, 0, z);
     scene.add(shelter.group);
     document.getElementById('shelterArrow').style.display = 'flex';
@@ -1296,104 +1624,6 @@ function updateRain(dt) {
   rain.pts.geometry.attributes.position.needsUpdate = true;
 }
 
-/* ================= HUD ================= */
-var foodCountEl = document.getElementById('foodCount');
-var objEl = document.getElementById('objective');
-var toastEl = document.getElementById('toast');
-var coordsEl = document.getElementById('coords');
-var shelterArrowEl = document.getElementById('shelterArrow');
-var arrowIcon = document.getElementById('arrowIcon');
-var shelterDistEl = document.getElementById('shelterDist');
-var foodArrowEl = document.getElementById('foodArrow');
-var foodArrowIcon = document.getElementById('foodArrowIcon');
-var foodDistEl = document.getElementById('foodDist');
-var windArrowEl = document.getElementById('windArrow');
-var windArrowIcon = document.getElementById('windArrowIcon');
-var windLabel = document.getElementById('windLabel');
-var windDistEl = document.getElementById('windDist');
-var winOverlay = document.getElementById('winOverlay');
-var winText = document.getElementById('winText');
-var hudEl = document.getElementById('hud');
-var menuEl = document.getElementById('menuOverlay');
-var levelSelectEl = document.getElementById('levelSelectOverlay');
-var mmCanvas = document.getElementById('minimap');
-var mm = mmCanvas.getContext('2d');
-
-var toastT = 0;
-function toast(msg, dur) { toastEl.textContent = msg; toastEl.style.opacity = '1'; toastT = dur || 2.4; }
-
-/* ================= 菜单 / 选关 ================= */
-function showMenu() {
-  state = 'menu';
-  menuEl.style.display = 'flex';
-  levelSelectEl.style.display = 'none';
-  winOverlay.style.display = 'none';
-  hudEl.style.display = 'none';
-}
-function showLevelSelect() {
-  state = 'select';
-  renderLevelCards();
-  menuEl.style.display = 'none';
-  levelSelectEl.style.display = 'flex';
-  hudEl.style.display = 'none';
-}
-function renderLevelCards() {
-  var grid = document.getElementById('levelGrid');
-  grid.innerHTML = '';
-  for (var n = 1; n <= 5; n++) {
-    var lv = LEVELS[n];
-    var unlocked = (n === 1) || clearedSet.has(n - 1);
-    var cleared = clearedSet.has(n);
-    var d = document.createElement('div');
-    d.className = 'lvCard' + (unlocked ? '' : ' locked') + (cleared ? ' cleared' : '');
-    d.innerHTML = '<div class="lvNo">' + n + '</div>' +
-      '<div class="lvName">' + lv.name + '</div>' +
-      '<div class="lvDesc">' + lv.desc + '</div>' +
-      '<div class="lvStars">' + '★'.repeat(lv.star) + '</div>' +
-      '<div class="lvState">' + (!unlocked ? '🔒 未解锁' : (cleared ? '✓ 已通关' : '可挑战')) + '</div>';
-    if (unlocked) {
-      d.addEventListener('click', (function (nn) { return function () { startLevel(nn); }; })(n));
-    }
-    grid.appendChild(d);
-  }
-}
-/* 无刷新切关 / 重开 / 回菜单（手机浏览器 location.reload 切关不可靠） */
-function startLevel(n) {
-  try { location.hash = 'level=' + n; } catch (e) {} // 写 hash 保留“刷新后回到本关”能力，但不刷新
-  bootGame(n);
-}
-function backToMenu() {
-  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}
-  bootGame(0); // 菜单场景（用第 1 关配置作背景）
-}
-if (!mmBound) { // 按钮只绑一次：bootGame 重复执行时不会重复绑定
-  mmBound = true;
-  document.getElementById('btnStart').addEventListener('click', showLevelSelect);
-  document.getElementById('btnBack').addEventListener('click', showMenu);
-  document.getElementById('btnNext').addEventListener('click', function () {
-    if (curLevel < 5) startLevel(curLevel + 1); else showLevelSelect();
-  });
-  document.getElementById('btnRetry').addEventListener('click', function () { bootGame(curLevel); });
-  document.getElementById('btnMenu').addEventListener('click', backToMenu);
-}
-
-if (curLevel === 0) showMenu();
-
-/* 按关卡刷新 HUD 文案 */
-(function initLevelUI() {
-  if (curLevel === 0) return;
-  document.getElementById('panelLevel').textContent = '🐄 哞哞庇护所 · 第一大关 第 ' + curLevel + ' 小关 · ' + L.name;
-  var objText = '目标：收集 5 份草料';
-  var hintText = '🖱️ 点击草地移动小牛 · 靠近草料自动收集 · 树林会挡住去路';
-  if (L.rivers > 0 && !L.maze) hintText += ' · 河流挡路，只能走小桥';
-  if (L.maze) hintText += ' · 过小桥进迷宫，走遍迷宫找齐草料';
-  if (L.rain) hintText += ' · 🌧 风雨交加';
-  if (L.tornado) hintText += ' · 🌀 小心龙卷风（卷住后要等风停）';
-  hintText += ' · 滚轮缩放 · R 重开 · M 静音';
-  document.getElementById('hint').textContent = hintText;
-  document.getElementById('objective').textContent = objText;
-})();
-
 addEventListener('keydown', function (e) {
   if (state === 'menu' || state === 'select') return;
   if (e.key === 'r' || e.key === 'R') bootGame(curLevel); // 原地重开，不刷新
@@ -1422,36 +1652,24 @@ function drawMinimap() {
       mm.fillRect(dx * SC - 1.3, dz * SC - 1.3, 2.6, 2.6);
     }
   }
-  // 河流：蓝色粗线
-  mm.strokeStyle = 'rgba(90,170,230,0.9)';
-  mm.lineWidth = 2;
-  for (var ri = 0; ri < rivers.length; ri++) {
-    var rv = rivers[ri];
-    mm.lineWidth = Math.max(2, rv.w * SC);
-    mm.beginPath();
-    for (var s = -RANGE; s <= RANGE; s += RANGE / 6) {
-      var px = cow.pos.x + rv.dx * s, pz = cow.pos.z + rv.dz * s;
-      var lx = (px - cow.pos.x) * SC, ly = (pz - cow.pos.z) * SC;
-      if (s === -RANGE) mm.moveTo(lx, ly); else mm.lineTo(lx, ly);
+  // 河流：蓝色块（迷宫树墙已由树木深色点覆盖）
+  mm.fillStyle = 'rgba(90,170,230,0.9)';
+  for (var wi = 0; wi < waterZones.length; wi++) {
+    var wz2 = waterZones[wi];
+    var wzx = (wz2.x1 + wz2.x2) / 2 - cow.pos.x, wzz = (wz2.z1 + wz2.z2) / 2 - cow.pos.z;
+    if (Math.abs(wzx) < RANGE && Math.abs(wzz) < RANGE) {
+      mm.fillRect(wzx * SC - (wz2.x2 - wz2.x1) * SC / 2, wzz * SC - (wz2.z2 - wz2.z1) * SC / 2,
+        (wz2.x2 - wz2.x1) * SC, (wz2.z2 - wz2.z1) * SC);
     }
-    mm.stroke();
   }
-  // 小桥：黄色小方块
+  // 小桥：黄色块
   mm.fillStyle = '#e8b04b';
-  for (var bi = 0; bi < bridges.length; bi++) {
-    var b = bridges[bi];
-    var bdx = b.x - cow.pos.x, bdz = b.z - cow.pos.z;
-    if (Math.abs(bdx) < RANGE && Math.abs(bdz) < RANGE) {
-      mm.fillRect(bdx * SC - 2.5, bdz * SC - 2.5, 5, 5);
-    }
-  }
-  // 迷宫墙：深灰点
-  if (maze) {
-    mm.fillStyle = 'rgba(70,60,48,0.9)';
-    for (var wi = 0; wi < maze.walls.length; wi++) {
-      var w = maze.walls[wi];
-      var wx = (w.x1 + w.x2) / 2 - cow.pos.x, wz = (w.z1 + w.z2) / 2 - cow.pos.z;
-      if (Math.abs(wx) < RANGE && Math.abs(wz) < RANGE) mm.fillRect(wx * SC - 1.5, wz * SC - 1.5, 3, 3);
+  for (var bz2 = 0; bz2 < bridgeZones.length; bz2++) {
+    var bzz = bridgeZones[bz2];
+    var bzx = (bzz.x1 + bzz.x2) / 2 - cow.pos.x, bzzz = (bzz.z1 + bzz.z2) / 2 - cow.pos.z;
+    if (Math.abs(bzx) < RANGE && Math.abs(bzzz) < RANGE) {
+      mm.fillRect(bzx * SC - (bzz.x2 - bzz.x1) * SC / 2, bzzz * SC - (bzz.z2 - bzz.z1) * SC / 2,
+        (bzz.x2 - bzz.x1) * SC, (bzz.z2 - bzz.z1) * SC);
     }
   }
   for (var fi = 0; fi < foods.length; fi++) {
@@ -1548,6 +1766,17 @@ function updateClickRing(dt) {
 var camOffset = new THREE.Vector3(0, 21, 16);
 var zoom = 1;
 var camPos = new THREE.Vector3(0, camOffset.y, camOffset.z);
+/* 迷宫关：小牛出生在迷宫入口外，相机直接就位（不从原点飞过来） */
+if (maze && maze.entrance) {
+  cow.pos.set(maze.entrance.x, 0, maze.entrance.z);
+  cow.group.position.set(cow.pos.x, 0, cow.pos.z);
+  camPos.set(cow.pos.x + camOffset.x, camOffset.y, cow.pos.z + camOffset.z);
+}
+/* 调试钩子：浏览器控制台可用 __mmState() 查看小牛位置/关卡/迷宫状态（手机排查好用） */
+window.__mmState = function () {
+  return { level: curLevel, cowX: cow.pos.x, cowZ: cow.pos.z, hasMaze: !!maze,
+           entrance: (maze && maze.entrance) ? { x: maze.entrance.x, z: maze.entrance.z } : null };
+};
 addEventListener('wheel', function (e) {
   zoom *= 1 + Math.sign(e.deltaY) * 0.09;
   zoom = Math.min(1.6, Math.max(0.6, zoom));
@@ -1568,14 +1797,10 @@ function updateCamera(dt) {
   groundTex.offset.set(desX / GROUND_TILE, -desZ / GROUND_TILE);
 }
 
-/* ================= 河流更新 ================= */
-function updateRivers(dt) {
-  for (var i = 0; i < rivers.length; i++) {
-    var rv = rivers[i];
-    // 河面 mesh 中心对准小牛在中心线上的垂足，长边沿河方向（视觉上无限长）
-    var t = cow.pos.x * rv.dx + cow.pos.z * rv.dz;
-    rv.mesh.group.position.set(cow.pos.x - t * rv.dx, 0, cow.pos.z - t * rv.dz);
-    rv.mesh.mat.map.offset.x += dt * 0.35; // 水流动
+/* ================= 水面流动 ================= */
+function updateWater(dt) {
+  for (var i = 0; i < waterMats.length; i++) {
+    if (waterMats[i].map) waterMats[i].map.offset.x += dt * 0.35;
   }
 }
 
@@ -1625,9 +1850,30 @@ function updateCow(dt, t) {
     }
   }
   // 水推出（站在桥面上除外；落点不在桥上则推回岸；被龙卷风卷住时不推）
-  if (rivers.length && !cow.trapped && inWater(cow.pos.x, cow.pos.z) && !onBridge(cow.pos.x, cow.pos.z)) {
+  if (waterZones.length && !cow.trapped && inWater(cow.pos.x, cow.pos.z) && !onBridge(cow.pos.x, cow.pos.z)) {
     var shore = pushOutOfWater(cow.pos.x, cow.pos.z);
     if (shore) { cow.pos.x = shore.x; cow.pos.z = shore.z; }
+  }
+  // 墙体纠偏：被龙卷风拖进树墙（或推岸落点嵌进墙）时，移到最近的可站立格，防止卡死
+  if (maze && !cow.trapped) {
+    var wHit = queryWalls(cow.pos.x, cow.pos.z, 0.02), inside = false;
+    for (var wi3 = 0; wi3 < wHit.length; wi3++) {
+      var wA3 = wHit[wi3];
+      if (cow.pos.x > wA3.x1 - 0.05 && cow.pos.x < wA3.x2 + 0.05 &&
+          cow.pos.z > wA3.z1 - 0.05 && cow.pos.z < wA3.z2 + 0.05) { inside = true; break; }
+    }
+    if (inside) {
+      var fx = null, fz = null, fd = 1e9;
+      for (var fi2 = 0; fi2 < maze.gw; fi2++) {
+        for (var fj2 = 0; fj2 < maze.gh; fj2++) {
+          var fcx = maze.gx(fi2), fcz = maze.gz(fj2);
+          if (queryWalls(fcx, fcz, 0.02).length || inWater(fcx, fcz)) continue;
+          var fdd = dist2(fcx, fcz, cow.pos.x, cow.pos.z);
+          if (fdd < fd) { fd = fdd; fx = fcx; fz = fcz; }
+        }
+      }
+      if (fx !== null) { cow.pos.x = fx; cow.pos.z = fz; cow.target = null; }
+    }
   }
 
   cow.group.position.x = cow.pos.x;
@@ -1658,18 +1904,7 @@ function updateCow(dt, t) {
   }
 }
 
-/* 把点沿最近河的法向推上岸 */
-function pushOutOfWater(x, z) {
-  for (var i = 0; i < rivers.length; i++) {
-    var rv = rivers[i];
-    var dist = rv.nx * x + rv.nz * z - rv.c;
-    if (Math.abs(dist) < rv.w / 2 - 0.2) {
-      var sign = dist >= 0 ? 1 : -1;
-      return { x: x + rv.nx * sign * (rv.w / 2 + 1.2 - Math.abs(dist)), z: z + rv.nz * sign * (rv.w / 2 + 1.2 - Math.abs(dist)) };
-    }
-  }
-  return null;
-}
+/* 把点推离最近水域（AABB 版，见文件前部 pushOutOfWater） */
 
 /* ================= 场景更新 ================= */
 function updateCowArrow(dt, t) {
@@ -1856,6 +2091,7 @@ function updateTornado(dt, t) {
 function updateFoods(dt, t) {
   for (var i = foods.length - 1; i >= 0; i--) {
     var f = foods[i];
+    if (!f) break; // 收满目标时 collect→onAllFoodCollected 已清空 foods，防止继续取用导致崩溃
     f.group.position.y = Math.sin(t * 2 + f.seed) * 0.12;
     f.ring.material.opacity = 0.38 + 0.22 * Math.sin(t * 3 + f.seed);
     f.glow.material.opacity = 0.38 + 0.2 * Math.sin(t * 2.4 + f.seed);
@@ -1867,6 +2103,7 @@ function updateTrees() {
   var dirty = false;
   for (var i = 0; i < trees.length; i++) {
     var tr = trees[i];
+    if (tr.fixed) continue;   // 迷宫树不回卷
     var dx = tr.x - cow.pos.x, dz = tr.z - cow.pos.z;
     if (Math.abs(dx) > TREE_WRAP || Math.abs(dz) > TREE_WRAP) {
       var nx = 0, nz = 0, ok = false;
@@ -1875,7 +2112,7 @@ function updateTrees() {
         nx = cow.pos.x + Math.cos(ang) * d;
         nz = cow.pos.z + Math.sin(ang) * d;
         ok = dist2(nx, nz, cow.pos.x, cow.pos.z) > 144;
-        if (ok && ((L.maze && inMazeZone(nx, nz)) || (rivers.length && inWater(nx, nz)) || (bridges.length && onBridge(nx, nz)))) ok = false;
+        if (ok && spawnBlocked(nx, nz)) ok = false;
         if (ok) {
           for (var fi = 0; fi < foods.length; fi++) {
             if (dist2(nx, nz, foods[fi].pos.x, foods[fi].pos.z) < 25) { ok = false; break; }
@@ -1906,13 +2143,14 @@ function updateTufts() {
     if (tp.z - cow.pos.z > GRASS_R) tp.z -= GRASS_R * 2;
     else if (tp.z - cow.pos.z < -GRASS_R) tp.z += GRASS_R * 2;
     // 别让草长在水里
-    if (rivers.length && inWater(tp.x, tp.z)) {
+    if (waterZones.length && inWater(tp.x, tp.z)) {
       var shore = pushOutOfWater(tp.x, tp.z);
       if (shore) { tp.x = shore.x; tp.z = shore.z; }
     }
     dummy.position.set(tp.x, 0, tp.z);
     dummy.rotation.set(0, tp.rot, 0);
-    dummy.scale.setScalar(tp.s);
+    // 树墙格里不长草（缩小藏起来）
+    dummy.scale.setScalar((maze && queryWalls(tp.x, tp.z, 0.3).length > 0) ? 0.001 : tp.s);
     dummy.updateMatrix();
     tufts.setMatrixAt(i, dummy.matrix);
   }
@@ -1926,6 +2164,8 @@ function updateFlowers() {
     else if (g.position.x - cow.pos.x < -FLOWER_R) g.position.x += FLOWER_R * 2;
     if (g.position.z - cow.pos.z > FLOWER_R) g.position.z -= FLOWER_R * 2;
     else if (g.position.z - cow.pos.z < -FLOWER_R) g.position.z += FLOWER_R * 2;
+    g.visible = !((maze && queryWalls(g.position.x, g.position.z, 0.3).length > 0) ||
+                  (waterZones.length && inWater(g.position.x, g.position.z)));
   }
 }
 
@@ -2047,7 +2287,7 @@ function loop() {
   updateTrees();
   updateTufts();
   updateFlowers();
-  updateRivers(dt);
+  updateWater(dt);
   updateRain(dt);
   updateClouds(dt);
   if (shelter) updateShelterFx(t);
@@ -2057,20 +2297,26 @@ function loop() {
   updateHUD(dt);
   if ((state === 'play' || state === 'cleared') && shelter &&
       dist2(cow.pos.x, cow.pos.z, shelter.x, shelter.z) < 20.25) win();
-  renderer.render(scene, camera);
+  if (!renderer.getContext().isContextLost()) renderer.render(scene, camera);
 }
 loop(); // 启动主循环
 
 if (curLevel > 0) {
   var welcome = '欢迎来到哞哞庇护所！收集 5 份草料 🌾';
-  if (L.maze) welcome = '过小桥进入迷宫，收集 5 份草料 🌾';
-  else if (L.rivers > 0) welcome = '河流挡路，找准小桥过河！先收集 5 份草料 🌾';
+  if (L.asset) welcome = L.desc + '！收集 5 份草料 🌾';
   if (L.rain) welcome = '风雨交加的迷宫…收集 5 份草料回到庇护所 🌾🌧️';
   later(0.5, function () { toast(welcome, 4.5); });
 }
+} catch (err) {
+  if (curLevel > 0) showFatal(err); // 关卡内失败：错误页（可重试/回菜单）
+  else { try { console.warn('菜单背景场景初始化失败：', err); } catch (e) {} } // 菜单背景失败不挡菜单
+}
 }
 window.__mmBoot = bootGame; // 暴露给控制台调试：__mmBoot(关卡号) 可直接切关
-bootGame(curLevel);         // 首次启动（curLevel 来自 hash，0 = 开始菜单）
+/* 启动：先出菜单（纯 DOM，零风险），再建菜单背景 3D 场景（失败也不挡菜单） */
+try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {} // 清掉 stale hash
+showMenu();
+bootGame(0);
 // ==GAME_END==
 </script>
 </body>

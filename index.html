@@ -805,6 +805,22 @@ function makeWaterTexture() {
  * 网格：房间在奇/奇交叉点；房间之间的 EDGE 格打通=通道、未打通=墙。
  * 河带（bands 指定的网格线）上的墙格=水域、通道格=小桥；
  * 其余墙格=树墙（树木实例 + AABB），其余通道格=空地。 */
+/* 灌木地坪纹理：深色林地噪点，用于标出迷宫树墙的占地（比草地暗一档） */
+function makeThicketTexture() {
+  var c = document.createElement('canvas'); c.width = c.height = 128;
+  var g = c.getContext('2d');
+  g.fillStyle = '#4a7a37'; g.fillRect(0, 0, 128, 128);
+  var shades = ['#547f3d', '#43702f', '#5d8b41', '#3d6a2b', '#67964a', '#4f7c39'];
+  for (var i = 0; i < 900; i++) {
+    g.fillStyle = shades[(Math.random() * shades.length) | 0];
+    g.fillRect(Math.random() * 128, Math.random() * 128, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 function buildAssetMaze(cfg) {
   var rw = cfg.rw, rh = cfg.rh, cell = cfg.cell;
   var bands = cfg.bands || [], braid = cfg.braid || 0;
@@ -925,15 +941,16 @@ function buildAssetMaze(cfg) {
       }
     }
   }
-  // 树墙：每格 2-4 棵树（fixed，不回卷），AABB 保证真挡住
+  // 树墙：每格 4-6 棵树（fixed，不回卷）尽量铺满整格
+  // AABB 覆盖整格且不可见，所以树木必须铺到格边，另加"灌木地坪"标出占地（见下方 thicketMesh）
   var specs = [], mOakN = 0, mPineN = 0;
   for (var ti = 0; ti < treeSpecs.length; ti++) {
     var a = treeSpecs[ti].aabb;
-    var n = treeSpecs[ti].corner ? 2 + ((Math.random() * 2) | 0) : 3 + ((Math.random() * 2) | 0);
+    var n = treeSpecs[ti].corner ? 4 : 5 + ((Math.random() * 2) | 0);
     for (var t2 = 0; t2 < n; t2++) {
       var spec = {
-        x: (a.x1 + a.x2) / 2 + (Math.random() - 0.5) * cell * 0.6,
-        z: (a.z1 + a.z2) / 2 + (Math.random() - 0.5) * cell * 0.6,
+        x: (a.x1 + a.x2) / 2 + (Math.random() - 0.5) * (cell - 2.6),
+        z: (a.z1 + a.z2) / 2 + (Math.random() - 0.5) * (cell - 2.6),
         s: rand(0.85, 1.2), rot: rand(0, TAU),
         type: Math.random() < 0.55 ? 0 : 1
       };
@@ -987,6 +1004,26 @@ function buildAssetMaze(cfg) {
   [mazeMeshes.t0, mazeMeshes.l0, mazeMeshes.t1, mazeMeshes.l1].forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
   for (var wi = 0; wi < wallAABBs.length; wi++) wallGridAdd(wallAABBs[wi]);
   for (var wc = 0; wc < waterCells.length; wc++) waterZones.push(waterCells[wc]);
+
+  // 墙格地坪：深色灌木绿地坪（每格一片，InstancedMesh 一次画完）
+  // 墙体 AABB 不可见，必须让"树墙占地"在视觉上完整覆盖整格，否则玩家会看着树缝往里走、撞隐形墙
+  var thicketGeo = new THREE.PlaneGeometry(1, 1);
+  thicketGeo.rotateX(-Math.PI / 2);
+  var thicketMesh = new THREE.InstancedMesh(thicketGeo,
+    new THREE.MeshStandardMaterial({ map: makeThicketTexture(), roughness: 1, metalness: 0 }),
+    Math.max(1, wallAABBs.length));
+  thicketMesh.receiveShadow = true;
+  thicketMesh.frustumCulled = false;
+  var dmT = new THREE.Object3D();
+  for (var ai = 0; ai < wallAABBs.length; ai++) {
+    var wA = wallAABBs[ai];
+    dmT.position.set((wA.x1 + wA.x2) / 2, 0.028, (wA.z1 + wA.z2) / 2);
+    dmT.scale.set((wA.x2 - wA.x1) * 0.98, 1, (wA.z2 - wA.z1) * 0.98);
+    dmT.updateMatrix();
+    thicketMesh.setMatrixAt(ai, dmT.matrix);
+  }
+  thicketMesh.instanceMatrix.needsUpdate = true;
+  scene.add(thicketMesh);
 
   // 水面渲染：每条河带把连续水域格合并成一个个长条面片
   var waterMat = new THREE.MeshStandardMaterial({
@@ -1060,6 +1097,8 @@ function buildAssetMaze(cfg) {
   }
   return {
     gw: GW, gh: GH, cell: cell, gx: gx, gz: gz,
+    grid: wall,                  // grid[i][j]=true 表示该格是墙（树墙/水域）；false=可走（房间/走廊/小桥/入口豁口）
+    entranceCell: { i: rc * 2 + 1, j: 0 },
     reachable: reach,
     shelterRoom: { x: shelterRoom.x, z: shelterRoom.z, i: shelterRoom.i, j: shelterRoom.j, d: shelterRoom.d },
     entrance: { x: gx(rc * 2 + 1), z: MZ0 + cell * 1.6 },
@@ -1098,11 +1137,19 @@ function queryWalls(x, z, r) {
 if (L.asset) maze = buildAssetMaze(L.asset);
 
 /* ================= 通用阻挡判定 ================= */
-/* 回卷树木生成点专用：避水/桥/迷宫墙 */
+/* 迷宫占地框（含边距）：环境树与回卷树不得进入，否则树木会封堵房间/走廊造成死路 */
+function inMazeBox(x, z, pad) {
+  if (!maze) return false;
+  var p = pad || 0;
+  return x > maze.gx(0) - maze.cell / 2 - p && x < maze.gx(maze.gw - 1) + maze.cell / 2 + p &&
+         z > maze.gz(maze.gh - 1) - maze.cell / 2 - p && z < maze.gz(0) + maze.cell / 2 + p;
+}
+/* 回卷树木生成点专用：避水/桥/迷宫墙/迷宫占地 */
 function spawnBlocked(x, z) {
   if (waterZones.length && inWater(x, z)) return true;
   if (bridgeZones.length && onBridge(x, z)) return true;
   if (maze && queryWalls(x, z, 1.5).length > 0) return true;
+  if (inMazeBox(x, z, 6)) return true;
   return false;
 }
 function blocked(x, z) {
@@ -1120,10 +1167,10 @@ function zoneBlocked(x, z, r) {
   return false;
 }
 
-/* 树初始放置避开迷宫墙体/水域/小桥与入口走廊 */
+/* 树初始放置避开迷宫墙体/水域/小桥、迷宫占地与入口走廊 */
 for (var tpi = 0; tpi < TREE_COUNT; tpi++) {
   var tpt = trees[tpi], tries = 0;
-  while (tries < 40 && (zoneBlocked(tpt.x, tpt.z, 1.2) ||
+  while (tries < 40 && (zoneBlocked(tpt.x, tpt.z, 1.2) || inMazeBox(tpt.x, tpt.z, 6) ||
       (maze && maze.entrance && dist2(tpt.x, tpt.z, maze.entrance.x, maze.entrance.z) < 49))) {
     var aa = rand(0, TAU), dd = rand(15, TREE_WRAP - 5);
     tpt.x = Math.cos(aa) * dd; tpt.z = Math.sin(aa) * dd;
@@ -1805,6 +1852,78 @@ function updateWater(dt) {
 }
 
 /* ================= 小牛更新 ================= */
+/* ================= 迷宫寻路（中继点导航） ================= */
+/* 目标在迷宫内时，沿可走格 BFS 求出下一格中心作为中继点：
+   小牛会自动绕开树墙、找到入口豁口、走小桥过河，不会贴墙死磕。
+   返回 { wx, wz, fx, fz }：(wx,wz)=当前应走向的中继点；(fx,fz)=等效终点。
+   不需要寻路（无迷宫/内外都直走）时返回 null。 */
+function navWaypoint(tx, tz) {
+  if (!maze || !maze.grid) return null;
+  var GW = maze.gw, GH = maze.gh, cell = maze.cell, g0z = maze.gz(0);
+  function cellOf(x, z) {
+    return { i: Math.round(x / cell + (GW - 1) / 2), j: Math.round((g0z - z) / cell) };
+  }
+  function inRange(c) { return c.i >= 0 && c.i < GW && c.j >= 0 && c.j < GH; }
+  function nearestOpen(x, z) {
+    var best = null, bd = 1e9;
+    for (var i = 0; i < GW; i++) for (var j = 0; j < GH; j++) {
+      if (maze.grid[i][j]) continue;
+      var d = (maze.gx(i) - x) * (maze.gx(i) - x) + (maze.gz(j) - z) * (maze.gz(j) - z);
+      if (d < bd) { bd = d; best = { i: i, j: j }; }
+    }
+    return best;
+  }
+  var from = cellOf(cow.pos.x, cow.pos.z);
+  var to = cellOf(tx, tz);
+  var fx = tx, fz = tz;
+  if (!inRange(from) && !inRange(to)) return null;          // 小牛和目标都在迷宫外：直走
+  if (!inRange(from)) {                                     // 迷宫外 -> 内：先去入口豁口格中心
+    return { wx: maze.gx(maze.entranceCell.i), wz: maze.gz(0), fx: fx, fz: fz };
+  }
+  if (!inRange(to)) {                                       // 迷宫内 -> 外：先走到入口格
+    if (from.i === maze.entranceCell.i && from.j === 0) return null; // 已在入口格：直接向外走
+    to = { i: maze.entranceCell.i, j: 0 };
+  } else if (maze.grid[to.i][to.j]) {                       // 目标格是墙/水：吸附到最近可走格
+    var so = nearestOpen(tx, tz);
+    if (!so) return null;
+    to = so; fx = maze.gx(so.i); fz = maze.gz(so.j);
+  }
+  if (from.i === to.i && from.j === to.j) return null;      // 同格：直走
+  if (maze.grid[from.i][from.j]) {                          // 小牛格是墙（被龙卷风卷进去）：吸附最近可走格
+    var sf = nearestOpen(cow.pos.x, cow.pos.z);
+    if (!sf) return null;
+    from = sf;
+  }
+  // BFS（四邻，可走格）
+  var prev = [], seen = [];
+  for (var i2 = 0; i2 < GW; i2++) {
+    prev[i2] = []; seen[i2] = [];
+    for (var j2 = 0; j2 < GH; j2++) { prev[i2][j2] = null; seen[i2][j2] = false; }
+  }
+  var q = [from];
+  seen[from.i][from.j] = true;
+  var found = false;
+  while (q.length) {
+    var c = q.shift();
+    if (c.i === to.i && c.j === to.j) { found = true; break; }
+    var dirs = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    for (var k = 0; k < 4; k++) {
+      var ni = c.i + dirs[k][0], nj = c.j + dirs[k][1];
+      if (ni < 0 || ni >= GW || nj < 0 || nj >= GH) continue;
+      if (seen[ni][nj] || maze.grid[ni][nj]) continue;
+      seen[ni][nj] = true;
+      prev[ni][nj] = c;
+      q.push({ i: ni, j: nj });
+    }
+  }
+  if (!found) return null;
+  var cur = to;
+  while (prev[cur.i][cur.j] && !(prev[cur.i][cur.j].i === from.i && prev[cur.i][cur.j].j === from.j)) {
+    cur = prev[cur.i][cur.j];
+  }
+  return { wx: maze.gx(cur.i), wz: maze.gz(cur.j), fx: fx, fz: fz };
+}
+
 function updateCow(dt, t) {
   if (cow.jumpT > 0) {
     cow.jumpT -= dt;
@@ -1816,20 +1935,44 @@ function updateCow(dt, t) {
 
   // 被龙卷风卷住期间无法控制
   if ((state === 'play' || state === 'cleared') && cow.target && !cow.trapped) {
-    var dx = cow.target.x - cow.pos.x;
-    var dz = cow.target.z - cow.pos.z;
-    var d = Math.hypot(dx, dz);
-    if (d < 0.45) {
+    // 迷宫内寻路：有中继点时走向中继点（自动绕墙/找入口/过桥），到达判定仍看最终目标
+    var nav = navWaypoint(cow.target.x, cow.target.z);
+    var ftx = nav ? nav.fx : cow.target.x, ftz = nav ? nav.fz : cow.target.z;
+    var fdx = ftx - cow.pos.x, fdz = ftz - cow.pos.z;
+    if (Math.hypot(fdx, fdz) < 0.45) {
       cow.target = null;
       cow.moving = false;
     } else {
+      var dx = (nav ? nav.wx : cow.target.x) - cow.pos.x;
+      var dz = (nav ? nav.wz : cow.target.z) - cow.pos.z;
+      var d = Math.hypot(dx, dz);
+      if (d < 0.001) { dx = fdx; dz = fdz; d = Math.hypot(dx, dz); }
       var step = Math.min(COW_SPEED * dt, d);
       var nx = cow.pos.x + dx / d * step;
       var nz = cow.pos.z + dz / d * step;
       var moved = false;
       if (!blocked(nx, nz)) { cow.pos.x = nx; cow.pos.z = nz; moved = true; }
-      else if (!blocked(nx, cow.pos.z)) { cow.pos.x = nx; moved = true; }
-      else if (!blocked(cow.pos.x, nz)) { cow.pos.z = nz; moved = true; }
+      else {
+        // 绕行：先试偏离目标方向 ±40°/±75°/±110°（贴墙/贴树滑行），步长从完整逐步衰减
+        var ang = Math.atan2(dz, dx);
+        var dets = [0.7, -0.7, 1.3, -1.3, 1.9, -1.9, 2.6, -2.6];
+        for (var s = 1; s >= 0.34 && !moved; s -= 0.22) {
+          for (var di = 0; di < dets.length; di++) {
+            var a2 = ang + dets[di];
+            var tx = cow.pos.x + Math.cos(a2) * step * s;
+            var tz = cow.pos.z + Math.sin(a2) * step * s;
+            if (!blocked(tx, tz)) { cow.pos.x = tx; cow.pos.z = tz; moved = true; break; }
+          }
+        }
+        // 单轴滑动兜底
+        if (!moved && !blocked(nx, cow.pos.z)) { cow.pos.x = nx; moved = true; }
+        else if (!moved && !blocked(cow.pos.x, nz)) { cow.pos.z = nz; moved = true; }
+        // 被口袋围住：小幅后撤脱困
+        if (!moved) {
+          var bx2 = cow.pos.x - dx / d * step * 0.5, bz2 = cow.pos.z - dz / d * step * 0.5;
+          if (!blocked(bx2, bz2)) { cow.pos.x = bx2; cow.pos.z = bz2; moved = true; }
+        }
+      }
       cow.moving = moved;
       if (moved) cow.heading = Math.atan2(dx, dz);
     }
@@ -1874,6 +2017,40 @@ function updateCow(dt, t) {
       }
       if (fx !== null) { cow.pos.x = fx; cow.pos.z = fz; cow.target = null; }
     }
+  }
+
+  // 卡死救援：窗口内净位移过小（撞墙振荡、被水/墙夹角卡住等）且未被龙卷风卷住时，
+  // 螺旋扫描最近的可站立点瞬移过去，保证任何地形都不会永久卡死
+  if (maze && !cow.trapped && cow.target) {
+    cow.stuckWin = (cow.stuckWin || 0) + dt;
+    if (!cow.stuckRef) cow.stuckRef = { x: cow.pos.x, z: cow.pos.z };
+    if (cow.stuckWin >= 0.5) {
+      var netD2 = dist2(cow.pos.x, cow.pos.z, cow.stuckRef.x, cow.stuckRef.z);
+      if (netD2 < 0.16) cow.stuckT = (cow.stuckT || 0) + 0.5; else cow.stuckT = 0;
+      cow.stuckRef = { x: cow.pos.x, z: cow.pos.z };
+      cow.stuckWin = 0;
+      if (cow.stuckT >= 1.5) {
+        var rx2 = null, rz2 = null;
+        for (var rr2 = 1.5; rr2 <= 6.5 && rx2 === null; rr2 += 1.5) {
+          for (var aa3 = 0; aa3 < 24; aa3++) {
+            var px2 = cow.pos.x + Math.cos(aa3 / 24 * TAU) * rr2;
+            var pz2 = cow.pos.z + Math.sin(aa3 / 24 * TAU) * rr2;
+            if (blocked(px2, pz2)) continue;
+            var clear2 = true;
+            for (var cc2 = 0; cc2 < 8; cc2++) {
+              var ca2 = cc2 / 8 * TAU;
+              if (blocked(px2 + Math.cos(ca2) * 1.3, pz2 + Math.sin(ca2) * 1.3)) { clear2 = false; break; }
+            }
+            if (clear2) { rx2 = px2; rz2 = pz2; break; }
+          }
+        }
+        if (rx2 !== null) { cow.pos.x = rx2; cow.pos.z = rz2; }
+        cow.stuckT = 0;
+        cow.stuckRef = { x: cow.pos.x, z: cow.pos.z };
+      }
+    }
+  } else {
+    cow.stuckT = 0; cow.stuckWin = 0; cow.stuckRef = null;
   }
 
   cow.group.position.x = cow.pos.x;
@@ -2307,6 +2484,18 @@ if (curLevel > 0) {
   if (L.rain) welcome = '风雨交加的迷宫…收集 5 份草料回到庇护所 🌾🌧️';
   later(0.5, function () { toast(welcome, 4.5); });
 }
+/* 测试/调试钩子：实时反映闭包状态（shelter/foods 等会被重新赋值，必须用 getter） */
+window.__mmState = {
+  get maze() { return maze; },
+  get shelter() { return shelter; },
+  get foods() { return foods; },
+  get cow() { return cow; },
+  get trees() { return trees; },
+  waterZones: waterZones, bridgeZones: bridgeZones,
+  blocked: blocked, inWater: inWater, onBridge: onBridge,
+  queryWalls: queryWalls, queryTrees: queryTrees, L: L,
+  nav: navWaypoint, tornado: function () { return tornado; }
+};
 } catch (err) {
   if (curLevel > 0) showFatal(err); // 关卡内失败：错误页（可重试/回菜单）
   else { try { console.warn('菜单背景场景初始化失败：', err); } catch (e) {} } // 菜单背景失败不挡菜单

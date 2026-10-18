@@ -358,6 +358,10 @@ var MZ0 = -34;   // 迷宫北边缘 z（入口一侧）；MAP 计算与 buildAss
 var curLevel = 0;   // 启动恒为菜单页：关卡一律由玩家点击进入（stale hash 不再自动进关）
 var L = LEVELS[curLevel] || LEVELS[1]; // 菜单背景用第 1 关配置展示
 
+// 测试模式：解锁全部关卡（无需先通关上一关）。正式发布时把此值改为 false，
+// 或通过 window.__MM_TEST = false 关闭，即可恢复“通关解锁下一关”的顺序解锁。
+var TEST_MODE = (typeof window !== 'undefined') ? (window.__MM_TEST !== false) : true;
+
 /* ================= AbortController 兜底（老浏览器无原生支持时自造一个） ================= */
 if (typeof AbortController === 'undefined') {
   window.AbortController = function () {
@@ -471,7 +475,7 @@ function renderLevelCards() {
   grid.innerHTML = '';
   for (var n = 1; n <= 10; n++) {
     var lv = LEVELS[n];
-    var unlocked = (n === 1) || clearedSet.has(n - 1);
+    var unlocked = TEST_MODE || (n === 1) || clearedSet.has(n - 1);
     var cleared = clearedSet.has(n);
     var d = document.createElement('div');
     d.className = 'lvCard' + (unlocked ? '' : ' locked') + (cleared ? ' cleared' : '');
@@ -479,7 +483,7 @@ function renderLevelCards() {
       '<div class="lvName">' + lv.name + '</div>' +
       '<div class="lvDesc">' + lv.desc + '</div>' +
       '<div class="lvStars">' + '★'.repeat(lv.star) + '</div>' +
-      '<div class="lvState">' + (!unlocked ? '🔒 未解锁' : (cleared ? '✓ 已通关' : '可挑战')) + '</div>';
+      '<div class="lvState">' + (!unlocked ? '🔒 未解锁' : (cleared ? '✓ 已通关' : (TEST_MODE ? '🧪 测试可挑战' : '可挑战'))) + '</div>';
     if (unlocked) {
       d.addEventListener('click', (function (nn) { return function () { startLevel(nn); }; })(n));
     }

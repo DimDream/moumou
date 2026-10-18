@@ -531,6 +531,28 @@ function terrainH(x, z) {
   return h;
 }
 function groundY(x, z) { return terrainH(x, z); }
+/* 小牛脚下高度：山地取脚下四周最高点，避免上坡时身体嵌进坡面（视觉“走进悬崖”）。 */
+function cowGroundY(x, z) {
+  if (!IS_MOUNTAIN) return 0;
+  var y = terrainH(x, z), r = COW_R * 0.9;
+  var a = terrainH(x + r, z); if (a > y) y = a;
+  a = terrainH(x - r, z); if (a > y) y = a;
+  a = terrainH(x, z + r); if (a > y) y = a;
+  a = terrainH(x, z - r); if (a > y) y = a;
+  return y;
+}
+/* 地形高度范围：山地关据此抬高/压低「边界泥土悬崖」与「深渊平面」，
+ * 使悬崖顶部始终高于地形最高点、底部低于最低点，彻底避免被地形吞没/露出造成的穿插闪烁。 */
+var TER_MIN = 0, TER_MAX = 0;
+if (IS_MOUNTAIN) {
+  for (var _tz = MAP.z2; _tz <= MAP.z1; _tz += 2.5) {
+    for (var _tx = MAP.x1; _tx <= MAP.x2; _tx += 2.5) {
+      var _th = terrainH(_tx, _tz);
+      if (_th < TER_MIN) TER_MIN = _th;
+      if (_th > TER_MAX) TER_MAX = _th;
+    }
+  }
+}
 
 /* 树木数量按地图面积缩放，保证任意大小的图都有均匀林密度；山地关树木更少 */
 var TREE_BASE = Math.max(150, Math.min(340, Math.round((MAP.x2 - MAP.x1) * (MAP.z1 - MAP.z2) / 160)));
@@ -685,19 +707,23 @@ scene.add(ground);
 var voidG = new THREE.Mesh(new THREE.PlaneGeometry(2600, 2600),
   new THREE.MeshStandardMaterial({ color: 0x2c4a38, roughness: 1 }));
 voidG.rotation.x = -Math.PI / 2;
-voidG.position.set(0, -1.7, 0);
+// 深渊平面压到地形最低点之下，避免山谷处穿透地面造成闪烁
+voidG.position.set(0, Math.min(-1.7, TER_MIN - 1.5), 0);
 scene.add(voidG);
 /* 边界泥土悬崖：四条矮坝标记地图边缘（碰撞靠小牛钳制，见 updateCow） */
 (function buildMapBounds() {
   var w = MAP.x2 - MAP.x1, d = MAP.z1 - MAP.z2;
   var cx = (MAP.x1 + MAP.x2) / 2, cz = (MAP.z1 + MAP.z2) / 2;
   var dirtMat = new THREE.MeshStandardMaterial({ color: 0x7d5a36, roughness: 1 });
-  var t = 3.4, h = 2.4;
+  var t = 3.4;
+  // 悬崖高度随地形自适应：顶部高于地形最高点、底部低于最低点（平地关 TER_MIN=TER_MAX=0，即原来的矮坝）
+  var topY = TER_MAX + 1.2, botY = TER_MIN - 1.2;
+  var h = topY - botY, cy = (topY + botY) / 2;
   var bars = [
-    { s: [w + t * 2, h, t], p: [cx, h / 2 - 1.5, MAP.z1 + t / 2] },
-    { s: [w + t * 2, h, t], p: [cx, h / 2 - 1.5, MAP.z2 - t / 2] },
-    { s: [t, h, d], p: [MAP.x1 - t / 2, h / 2 - 1.5, cz] },
-    { s: [t, h, d], p: [MAP.x2 + t / 2, h / 2 - 1.5, cz] }
+    { s: [w + t * 2, h, t], p: [cx, cy, MAP.z1 + t / 2] },
+    { s: [w + t * 2, h, t], p: [cx, cy, MAP.z2 - t / 2] },
+    { s: [t, h, d], p: [MAP.x1 - t / 2, cy, cz] },
+    { s: [t, h, d], p: [MAP.x2 + t / 2, cy, cz] }
   ];
   for (var bi = 0; bi < 4; bi++) {
     var bm = new THREE.Mesh(new THREE.BoxGeometry(bars[bi].s[0], bars[bi].s[1], bars[bi].s[2]), dirtMat);
@@ -1643,35 +1669,48 @@ function buildBarn() {
   var walls = new THREE.Mesh(new THREE.BoxGeometry(7.2, 4.2, 5.6), woodMat);
   walls.position.y = 2.5; walls.castShadow = true; walls.receiveShadow = true;
 
+  // 屋身尺寸：宽 7.2(X) × 高 4.2(Y) × 深 5.6(Z)，墙顶 y=4.6
+  var WALL_HW = 3.6, WALL_HD = 2.8, WALL_TOP = 4.6, ROOF_RISE = 2.4, EAVE_OV = 0.4;
+
+  // 山墙（三角形端墙）：屋脊沿 Z 方向，山墙位于屋脊两端 = ±Z 面。
+  // 三角形底边贴合屋身宽度（X: -3.6..3.6），顶点在屋脊处（y=7.0），与坡屋顶下沿完全对齐。
   var gableShape = new THREE.Shape();
-  gableShape.moveTo(-3.6, 0); gableShape.lineTo(3.6, 0); gableShape.lineTo(0, 2.4); gableShape.closePath();
+  gableShape.moveTo(-WALL_HW, 0); gableShape.lineTo(WALL_HW, 0); gableShape.lineTo(0, ROOF_RISE); gableShape.closePath();
   var gableGeo = new THREE.ExtrudeGeometry(gableShape, { depth: 0.12, bevelEnabled: false });
-  // 山墙移到 ±X 端面（屋顶相对原版旋转 90°：屋脊沿纵深 Z 方向）
-  var gableR = new THREE.Mesh(gableGeo, woodMat); gableR.position.set(3.6, 4.6, 0); gableR.rotation.y = Math.PI / 2;
-  var gableL = new THREE.Mesh(gableGeo, woodMat); gableL.position.set(-3.6, 4.6, 0); gableL.rotation.y = -Math.PI / 2;
+  var gableF = new THREE.Mesh(gableGeo, woodMat); gableF.position.set(0, WALL_TOP, WALL_HD);
+  var gableB = new THREE.Mesh(gableGeo, woodMat); gableB.position.set(0, WALL_TOP, -WALL_HD - 0.12); gableB.rotation.y = Math.PI;
 
-  // 双坡屋顶（屋脊沿 Z 方向，内高外低）：两坡沿 X 方向向中心屋脊收拢
-  var roofR = new THREE.Mesh(new THREE.BoxGeometry(3.78, 0.28, 5.6), redMat);
-  roofR.position.set(1.8, 5.8, 0); roofR.rotation.z = -0.66; roofR.castShadow = true;
-  var roofL = new THREE.Mesh(new THREE.BoxGeometry(3.78, 0.28, 5.6), redMat);
-  roofL.position.set(-1.8, 5.8, 0); roofL.rotation.z = 0.66; roofL.castShadow = true;
-  var ridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 5.9), redMat);
-  ridge.position.set(0, 6.95, 0);
+  // 双坡屋顶（屋脊沿 Z 方向）：坡度 = 抬升/半宽 = 2.4/3.6，两坡从屋脊(x=0,y=7.0) 向 ±X 落到屋檐。
+  // 屋檐向 ±X 各出挑 0.4，前后沿 Z 各出挑 0.4；坡面下沿与山墙三角形顶边严格重合，杜绝破口。
+  var pitch = ROOF_RISE / WALL_HW;                 // 0.6667
+  var eaveX = WALL_HW + EAVE_OV;                   // 4.0
+  var eaveY = WALL_TOP - EAVE_OV * pitch;          // 屋檐比墙顶略低（出挑下垂）
+  var ridgeY = WALL_TOP + ROOF_RISE;               // 7.0
+  var slopeAng = Math.atan2(ROOF_RISE, WALL_HW);   // 坡度角
+  var slopeLen = Math.sqrt(eaveX * eaveX + (ridgeY - eaveY) * (ridgeY - eaveY));
+  var roofDepth = WALL_HD * 2 + EAVE_OV * 2;       // 前后出檐后的总进深
+  var midX = eaveX / 2, midY = (ridgeY + eaveY) / 2;
+  var roofR = new THREE.Mesh(new THREE.BoxGeometry(slopeLen, 0.28, roofDepth), redMat);
+  roofR.position.set(midX, midY, 0); roofR.rotation.z = -slopeAng; roofR.castShadow = true;
+  var roofL = new THREE.Mesh(new THREE.BoxGeometry(slopeLen, 0.28, roofDepth), redMat);
+  roofL.position.set(-midX, midY, 0); roofL.rotation.z = slopeAng; roofL.castShadow = true;
+  var ridge = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, roofDepth + 0.1), redMat);
+  ridge.position.set(0, ridgeY, 0);
 
-  // 大门移到 +X 山墙面（旋转后门在侧面山墙，朝向更合理）
-  var door = new THREE.Mesh(new THREE.BoxGeometry(0.25, 2.8, 2.4), darkMat);
-  door.position.set(3.84, 1.8, 0); door.rotation.y = Math.PI / 2;
-  var bar1 = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.18, 2.5), woodMat);
-  bar1.position.set(3.99, 2.2, 0); bar1.rotation.x = 0.5;
-  var bar2 = bar1.clone(); bar2.rotation.x = -0.5;
+  // 大门 / 横撑 / 窗 / 招牌：全部放在 +Z 山墙面（谷仓门开在山墙端，朝向玩家）
+  var door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.8, 0.25), darkMat);
+  door.position.set(0, 1.8, WALL_HD + 0.04);
+  var bar1 = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.18, 0.1), woodMat);
+  bar1.position.set(0, 2.2, WALL_HD + 0.19); bar1.rotation.z = 0.5;
+  var bar2 = bar1.clone(); bar2.rotation.z = -0.5;
 
   var winMat = new THREE.MeshStandardMaterial({ color: 0xffe9a8, emissive: 0xffd766, emissiveIntensity: 0.7 });
-  var win1 = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 0.12), winMat); win1.position.set(-2.2, 3.1, 2.84);
+  var win1 = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.1, 0.12), winMat); win1.position.set(-2.2, 3.1, WALL_HD + 0.04);
   var win2 = win1.clone(); win2.position.x = 2.2;
 
   var sign = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.15),
     new THREE.MeshBasicMaterial({ map: makeSignTexture(), transparent: true }));
-  sign.position.set(3.62, 3.55, 0); sign.rotation.y = Math.PI / 2;
+  sign.position.set(0, 3.85, WALL_HD + 0.06);
 
   var beam = new THREE.Mesh(
     new THREE.CylinderGeometry(2.4, 3.4, 34, 20, 1, true),
@@ -1689,7 +1728,7 @@ function buildBarn() {
   var light = new THREE.PointLight(0xffe9a8, 1.4, 46, 1.6);
   light.position.y = 6;
 
-  g.add(base, walls, gableR, gableL, roofL, roofR, ridge, door, bar1, bar2, win1, win2, sign, beam, ring, arrow, light);
+  g.add(base, walls, gableF, gableB, roofL, roofR, ridge, door, bar1, bar2, win1, win2, sign, beam, ring, arrow, light);
   g.userData = { beam: beam, arrow: arrow, ring: ring };
   return g;
 }
@@ -2364,7 +2403,7 @@ function navWaypoint(tx, tz) {
 }
 
 function updateCow(dt, t) {
-  var cowBaseY = groundY(cow.pos.x, cow.pos.z);   // 山地：小牛贴合地面起伏
+  var cowBaseY = cowGroundY(cow.pos.x, cow.pos.z);   // 山地：小牛贴合地面起伏（取脚下最高点，避免嵌进坡面）
   if (cow.jumpT > 0) {
     cow.jumpT -= dt;
     var p = 1 - Math.max(0, cow.jumpT) / 0.32;
@@ -2521,11 +2560,12 @@ function updateCow(dt, t) {
     cow.stuckT = 0; cow.stuckWin = 0; cow.stuckRef = null;
   }
 
-  // 地图边界钳制：边界是泥土悬崖，小牛永远在界内（被卷走时龙卷风自身也已钳制在界内）
-  if (cow.pos.x < MAP.x1 + COW_R) cow.pos.x = MAP.x1 + COW_R;
-  else if (cow.pos.x > MAP.x2 - COW_R) cow.pos.x = MAP.x2 - COW_R;
-  if (cow.pos.z < MAP.z2 + COW_R) cow.pos.z = MAP.z2 + COW_R;
-  else if (cow.pos.z > MAP.z1 - COW_R) cow.pos.z = MAP.z1 - COW_R;
+  // 地图边界钳制：边界是泥土悬崖，小牛永远在界内且与崖面留出余量（被卷走时龙卷风自身也已钳制在界内）
+  var BOUND = COW_R + 0.5;
+  if (cow.pos.x < MAP.x1 + BOUND) cow.pos.x = MAP.x1 + BOUND;
+  else if (cow.pos.x > MAP.x2 - BOUND) cow.pos.x = MAP.x2 - BOUND;
+  if (cow.pos.z < MAP.z2 + BOUND) cow.pos.z = MAP.z2 + BOUND;
+  else if (cow.pos.z > MAP.z1 - BOUND) cow.pos.z = MAP.z1 - BOUND;
 
   cow.group.position.x = cow.pos.x;
   cow.group.position.z = cow.pos.z;

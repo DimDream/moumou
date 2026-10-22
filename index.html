@@ -97,12 +97,27 @@
   #levelSelectOverlay { background: rgba(38,62,32,.5); backdrop-filter: blur(4px); }
   #levelCard {
     background: #fffdf4; border-radius: 24px; padding: 30px 38px 26px; width: min(760px, 92vw);
+    max-height: 92vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     box-shadow: 0 18px 50px rgba(20,40,15,.35); border: 3px solid #ffe9a8; text-align: center; color: #3d5a34;
   }
   #levelCard h2 { font-size: 30px; color: #e8930c; letter-spacing: 2px; }
   #levelCard .stageName { font-size: 15px; font-weight: 600; color: #6b8a5f; margin: 6px 0 20px; }
   #levelGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
-  @media (max-width: 720px) { #levelGrid { grid-template-columns: repeat(2, 1fr); } }
+  .chapterBar { display: flex; align-items: center; justify-content: center; gap: 12px; }
+  .chapArrow {
+    font-size: 26px; line-height: 1; width: 42px; height: 42px; flex: 0 0 42px;
+    border: none; border-radius: 50%; background: linear-gradient(180deg,#8ed06b,#5da344); color: #fff;
+    box-shadow: 0 3px 0 #4a8437; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  .chapArrow:active { transform: translateY(3px); box-shadow: 0 1px 0 #4a8437; }
+  .chapArrow:disabled { opacity: 0.3; cursor: default; box-shadow: none; }
+  #stageName { margin: 0; min-width: 0; }
+  @media (max-width: 720px) {
+    #levelGrid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    #levelCard { padding: 20px 16px 18px; }
+    #levelCard h2 { font-size: 24px; }
+    #levelCard .stageName { font-size: 13px; }
+  }
   .lvCard {
     background: #f4f9ec; border: 2px solid #d9e8c8; border-radius: 16px; padding: 14px 8px 12px;
     cursor: pointer; transition: transform .12s, box-shadow .12s; touch-action: manipulation;
@@ -196,7 +211,11 @@
 <div id="levelSelectOverlay" class="overlay">
   <div id="levelCard">
     <h2>选择关卡</h2>
-    <p class="stageName">第一大关 · 青原之旅（第 1 - 5 小关）</p>
+    <div class="chapterBar">
+      <button id="btnChapPrev" class="chapArrow" aria-label="上一大关">‹</button>
+      <p class="stageName" id="stageName">第一大关 · 青原之旅（第 1 - 5 小关）</p>
+      <button id="btnChapNext" class="chapArrow" aria-label="下一大关">›</button>
+    </div>
     <div id="levelGrid"></div>
     <button id="btnBack" class="ghostBtn">返回</button>
   </div>
@@ -314,6 +333,18 @@ window.LEVEL_DATA = {
   /* ===================== 第二大关：山地（6-10 关） =====================
    * 自由探索不变，过关机制不变；地形变为山地（凹凸不平）、障碍物为树木 + 岩石，
    * 没有河流，地面为石头，树木更少。第 10 关阴天下雪、有雪花与脚印、大风动画。 */
+  /* ===================== 第三大关：洞穴（11-15 关） =====================
+   * 主题切换为地下洞穴：阴暗环境 + 小牛自带提灯（暖色点光源），无龙卷风。
+   * 11-14 关逐渐丰富的钟乳石（顶垂）、石柱（立柱）、石笋（地突）、平静水潭（倒影+走过波纹）；
+   * 第 15 关为发光多彩水晶。所有洞穴关都有脆弱石板陷阱：走过会半陷入坑中，挣扎 2 秒才能出来，
+   * 期间不能操作。字段说明：
+   *   cave        是否为洞穴关卡（开启洞穴环境/无龙卷风）
+   *   stalactites 钟乳石数量（自洞顶垂下，纯装饰）
+   *   stalagmites 石笋数量（自地面突起，碰撞障碍）
+   *   pillars     石柱数量（地面到洞顶的立柱，碰撞障碍）
+   *   pools       水潭数量（圆形静水，倒影+波纹，碰撞障碍）
+   *   crystals    水晶数量（仅第 15 关，发光多彩，碰撞障碍）
+   *   traps       脆弱石板陷阱数量 */
   6: {
     seed: 0x6A1B2C,
     name: '碎石山坡', desc: '崎岖山地，绕开岩石与稀疏林木收集草料',
@@ -343,6 +374,42 @@ window.LEVEL_DATA = {
     name: '雪原庇护', desc: '阴天下雪，跟着脚印与雪花回到庇护所',
     star: 5, tornado: false, rain: false, snow: true, wind: true, terrain: 'mountain', rockCount: 20, foodCount: 5,
     asset: { rw: 9, rh: 7, cell: 11, rivers: null }
+  },
+
+  11: {
+    seed: 0xB1C2D3,
+    name: '洞口初探', desc: '提灯照亮幽暗洞窟，绕过钟乳石与石笋，当心脚下的脆石板',
+    star: 4, tornado: false, cave: true, foodCount: 5,
+    asset: { rw: 7, rh: 5, cell: 11, rivers: null },
+    stalactites: 14, stalagmites: 13, pillars: 4, pools: 2, crystals: 0, traps: 4
+  },
+  12: {
+    seed: 0xC2D3E4,
+    name: '石柱回廊', desc: '林立的石柱间穿行，静水潭映着提灯微光，踩碎石板会陷落',
+    star: 4, tornado: false, cave: true, foodCount: 5,
+    asset: { rw: 8, rh: 6, cell: 11, rivers: null },
+    stalactites: 18, stalagmites: 16, pillars: 8, pools: 3, crystals: 0, traps: 5
+  },
+  13: {
+    seed: 0xD3E4F5,
+    name: '晶簇深窟', desc: '钟乳石与石笋密布，水潭静卧其间，小心每一步脆石板',
+    star: 5, tornado: false, cave: true, foodCount: 5,
+    asset: { rw: 9, rh: 7, cell: 11, rivers: null },
+    stalactites: 22, stalagmites: 20, pillars: 12, pools: 3, crystals: 0, traps: 6
+  },
+  14: {
+    seed: 0xE4F5A6,
+    name: '幽渊石林', desc: '嶙峋石林与深潭交织的洞窟深处，石板陷阱无处不在',
+    star: 5, tornado: false, cave: true, foodCount: 5,
+    asset: { rw: 9, rh: 8, cell: 11, rivers: null },
+    stalactites: 26, stalagmites: 24, pillars: 16, pools: 4, crystals: 0, traps: 7
+  },
+  15: {
+    seed: 0xF5A607,
+    name: '荧光水晶宫', desc: '发光的多彩水晶照亮洞窟，石笋水潭间藏着最后的脆石板',
+    star: 5, tornado: false, cave: true, foodCount: 5,
+    asset: { rw: 9, rh: 7, cell: 11, rivers: null },
+    stalactites: 12, stalagmites: 12, pillars: 8, pools: 3, crystals: 16, traps: 8
   }
 };
 
@@ -465,15 +532,26 @@ function showMenu() {
 }
 function showLevelSelect() {
   state = 'select';
+  if (curLevel > 0) curChapter = Math.floor((curLevel - 1) / 5);   // 打开时定位到当前关卡所在大关
   renderLevelCards();
   menuEl.style.display = 'none';
   levelSelectEl.style.display = 'flex';
   hudEl.style.display = 'none';
 }
+var CHAPTERS = [
+  { name: '第一大关 · 青原之旅（第 1 - 5 小关）', range: [1, 5] },
+  { name: '第二大关 · 山地征程（第 6 - 10 小关）', range: [6, 10] },
+  { name: '第三大关 · 幽深洞穴（第 11 - 15 小关）', range: [11, 15] }
+];
+var curChapter = 0;
 function renderLevelCards() {
   var grid = document.getElementById('levelGrid');
   grid.innerHTML = '';
-  for (var n = 1; n <= 10; n++) {
+  var ch = CHAPTERS[curChapter];
+  document.getElementById('stageName').textContent = ch.name;
+  document.getElementById('btnChapPrev').disabled = (curChapter === 0);
+  document.getElementById('btnChapNext').disabled = (curChapter === CHAPTERS.length - 1);
+  for (var n = ch.range[0]; n <= ch.range[1]; n++) {
     var lv = LEVELS[n];
     var unlocked = TEST_MODE || (n === 1) || clearedSet.has(n - 1);
     var cleared = clearedSet.has(n);
@@ -503,8 +581,10 @@ if (!mmBound) { // 按钮只绑一次：bootGame 重复执行时不会重复绑�
   mmBound = true;
   document.getElementById('btnStart').addEventListener('click', showLevelSelect);
   document.getElementById('btnBack').addEventListener('click', showMenu);
+  document.getElementById('btnChapPrev').addEventListener('click', function () { if (curChapter > 0) { curChapter--; renderLevelCards(); } });
+  document.getElementById('btnChapNext').addEventListener('click', function () { if (curChapter < CHAPTERS.length - 1) { curChapter++; renderLevelCards(); } });
   document.getElementById('btnNext').addEventListener('click', function () {
-    if (curLevel < 10) startLevel(curLevel + 1); else showLevelSelect();
+    if (curLevel < 15) startLevel(curLevel + 1); else showLevelSelect();
   });
   document.getElementById('btnRetry').addEventListener('click', function () { bootGame(curLevel); });
   document.getElementById('btnMenu').addEventListener('click', backToMenu);
@@ -513,13 +593,18 @@ if (!mmBound) { // 按钮只绑一次：bootGame 重复执行时不会重复绑�
 /* 按关卡刷新 HUD 文案 */
 function refreshLevelUI() {
   if (curLevel === 0) return;
-  var chapter = curLevel <= 5 ? '第一大关' : '第二大关';
+  var chapter = curLevel <= 5 ? '第一大关' : (curLevel <= 10 ? '第二大关' : '第三大关');
   document.getElementById('panelLevel').textContent = '🐄 哞哞庇护所 · ' + chapter + ' 第 ' + curLevel + ' 小关 · ' + L.name;
   var objText = '目标：收集 5 份草料';
   var hintText = (IS_TOUCH ? '👆 触摸草地移动小牛（双指捏合缩放）' : '🖱️ 点击草地移动小牛（滚轮/双指缩放）') + ' · 靠近草料自动收集';
   if (L.asset) hintText += ' · ' + L.desc;
   else hintText += ' · 树林会挡住去路';
   if (L.terrain === 'mountain') hintText += ' · ⛰️ 山地崎岖，小心岩石';
+  if (L.cave) {
+    hintText += ' · 🕯 提灯照亮幽暗洞窟';
+    hintText += ' · 当心脆石板陷阱：踩中会半陷坑中，挣扎约 2 秒、期间无法操作';
+    if (L.crystals) hintText += ' · 💎 发光水晶照亮深处';
+  }
   if (L.rain) hintText += ' · 🌧 风雨交加';
   if (L.snow) hintText += ' · ❄️ 阴天下雪，留意脚印';
   if (L.wind) hintText += ' · 💨 大风呼啸';
@@ -630,6 +715,7 @@ function clampToMap(x, z, m) {
 var IS_MOUNTAIN = !!(L.terrain && L.terrain === 'mountain');  // 山地：凹凸不平、石地、树+岩石、无河
 var IS_SNOW = !!L.snow;        // 下雪（第 10 关）
 var IS_WINDY = !!L.wind;       // 大风（强风动画）
+var IS_CAVE = !!L.cave;        // 洞穴：阴暗环境 + 小牛提灯，无龙卷风，钟乳石/石柱/石笋/水潭/水晶/脆石板陷阱
 /* 地形高度场：山地关用多频正弦叠加生成平滑起伏的山丘；其余关为平地（高度 0）。
  * 纯确定性（由关卡 seed 偏移相位），保证每次进入同一关地形完全一致。 */
 function terrainH(x, z) {
@@ -669,7 +755,7 @@ if (IS_MOUNTAIN) {
 
 /* 树木数量按地图面积缩放，保证任意大小的图都有均匀林密度；山地关树木更少 */
 var TREE_BASE = Math.max(150, Math.min(340, Math.round((MAP.x2 - MAP.x1) * (MAP.z1 - MAP.z2) / 160)));
-var TREE_COUNT = IS_MOUNTAIN ? Math.round(TREE_BASE * 0.45) : TREE_BASE;
+var TREE_COUNT = IS_MOUNTAIN ? Math.round(TREE_BASE * 0.45) : (IS_CAVE ? 0 : TREE_BASE);
 /* 岩石数量（仅山地关） */
 var ROCK_COUNT = IS_MOUNTAIN ? (L.rockCount || 26) : 0;
 
@@ -704,7 +790,10 @@ var startTime = performance.now();
 /* ================= 渲染基础 ================= */
 var scene = new THREE.Scene();
 var rainy = !!L.rain;
-if (rainy) {
+if (IS_CAVE) {
+  scene.background = new THREE.Color(0x06090e);
+  scene.fog = new THREE.Fog(0x06090e, 24, 96);
+} else if (rainy) {
   scene.background = new THREE.Color(0x93a9bd);
   scene.fog = new THREE.Fog(0x93a9bd, 30, 180);
 } else {
@@ -735,19 +824,57 @@ addEventListener('resize', function () {
 }, { signal: mmAbort.signal });
 
 /* ================= 灯光 ================= */
-scene.add(new THREE.HemisphereLight(0xd8ecff, 0x77b255, rainy ? 0.55 : 0.9));
-var sun = new THREE.DirectionalLight(0xfff3d8, rainy ? 0.9 : 1.7);
-sun.castShadow = true;
-sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
-sun.shadow.camera.left = -75; sun.shadow.camera.right = 75;
-sun.shadow.camera.top = 75; sun.shadow.camera.bottom = -75;
-sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
-sun.shadow.bias = -0.0006;
-sun.shadow.normalBias = 0.02;
-sun.shadow.camera.updateProjectionMatrix();
-scene.add(sun); scene.add(sun.target);
+var cowLight = null;   // 洞穴关小牛自带提灯（暖色点光源），非洞穴关为 null
+scene.add(new THREE.HemisphereLight(0xd8ecff, 0x77b255, rainy ? 0.55 : (IS_CAVE ? 0.16 : 0.9)));
+var sun = new THREE.DirectionalLight(0xfff3d8, rainy ? 0.9 : (IS_CAVE ? 0.0 : 1.7));
+if (IS_CAVE) {
+  // 洞穴：天空光几乎为零，靠小牛提灯 + 微弱冷色补光营造幽暗氛围（不投影，省开销）
+  scene.add(new THREE.AmbientLight(0x33405a, 0.22));
+  // 小牛自带提灯：暖色点光源跟随小牛，照亮周围洞窟
+  cowLight = new THREE.PointLight(0xffd49a, 2.6, 50, 1.6);
+  cowLight.position.set(0, 3.2, 0);
+  scene.add(cowLight);
+}
+if (sun.intensity > 0) {
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(IS_TOUCH ? 1024 : 2048, IS_TOUCH ? 1024 : 2048);
+  sun.shadow.camera.left = -75; sun.shadow.camera.right = 75;
+  sun.shadow.camera.top = 75; sun.shadow.camera.bottom = -75;
+  sun.shadow.camera.near = 10; sun.shadow.camera.far = 260;
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.02;
+  sun.shadow.camera.updateProjectionMatrix();
+  scene.add(sun); scene.add(sun.target);
+}
 
 /* ================= 草地贴图与地面 ================= */
+/* 洞穴地面：湿冷岩石，深灰蓝底 + 暗斑与零星亮片（提灯下可见的矿物反光） */
+function makeCaveFloorTexture() {
+  var c = document.createElement('canvas'); c.width = c.height = 256;
+  var g = c.getContext('2d');
+  g.fillStyle = '#2b3138'; g.fillRect(0, 0, 256, 256);
+  var cols = ['#343c45', '#262c34', '#3c454f', '#2f363f', '#404a55'];
+  for (var i = 0; i < 2600; i++) {
+    g.fillStyle = cols[(Math.random() * cols.length) | 0];
+    g.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 3, 2 + Math.random() * 3);
+  }
+  // 暗水渍/苔斑
+  for (var j = 0; j < 60; j++) {
+    g.fillStyle = 'rgba(30,42,40,0.18)';
+    g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 6 + Math.random() * 22, 0, TAU); g.fill();
+  }
+  // 矿物亮片
+  for (var k = 0; k < 120; k++) {
+    g.fillStyle = 'rgba(160,180,200,0.10)';
+    g.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
+  }
+  var t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(46, 46);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return t;
+}
 function makeGrassTexture() {
   var c = document.createElement('canvas'); c.width = c.height = 256;
   var g = c.getContext('2d');
@@ -794,7 +921,9 @@ function makeStoneTexture() {
   return t;
 }
 function makeGroundTexture() {
-  return IS_MOUNTAIN ? makeStoneTexture() : makeGrassTexture();
+  if (IS_MOUNTAIN) return makeStoneTexture();
+  if (IS_CAVE) return makeCaveFloorTexture();
+  return makeGrassTexture();
 }
 var groundTex = makeGroundTexture();
 /* 地形网格：山地关用细分平面并按高度场位移顶点（凹凸不平）；其余关为平地（位移恒 0） */
@@ -823,10 +952,49 @@ voidG.rotation.x = -Math.PI / 2;
 // 深渊平面压到地形最低点之下，避免山谷处穿透地面造成闪烁
 voidG.position.set(0, Math.min(-1.7, TER_MIN - 1.5), 0);
 scene.add(voidG);
-/* 边界泥土悬崖：四条矮坝标记地图边缘（碰撞靠小牛钳制，见 updateCow） */
+/* 边界泥土悬崖 / 洞穴岩壁：四条矮坝标记地图边缘（碰撞靠小牛钳制，见 updateCow） */
 (function buildMapBounds() {
   var w = MAP.x2 - MAP.x1, d = MAP.z1 - MAP.z2;
   var cx = (MAP.x1 + MAP.x2) / 2, cz = (MAP.z1 + MAP.z2) / 2;
+  if (IS_CAVE) {
+    // 洞穴：高耸的岩石洞壁 + 高位穹顶（不遮挡俯视视线，仅作边缘框景）+ 四壁顶缘垂下的钟乳石边饰
+    var rockMat2 = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 1, flatShading: true });
+    var topY = 22, botY = -3, hh = topY - botY, ccy = (topY + botY) / 2, t = 4.0;
+    var bars = [
+      { s: [w + t * 2, hh, t], p: [cx, ccy, MAP.z1 + t / 2] },
+      { s: [w + t * 2, hh, t], p: [cx, ccy, MAP.z2 - t / 2] },
+      { s: [t, hh, d], p: [MAP.x1 - t / 2, ccy, cz] },
+      { s: [t, hh, d], p: [MAP.x2 + t / 2, ccy, cz] }
+    ];
+    for (var bi = 0; bi < 4; bi++) {
+      var bm = new THREE.Mesh(new THREE.BoxGeometry(bars[bi].s[0], bars[bi].s[1], bars[bi].s[2]), rockMat2);
+      bm.position.set(bars[bi].p[0], bars[bi].p[1], bars[bi].p[2]);
+      bm.receiveShadow = true; bm.castShadow = true;
+      scene.add(bm);
+    }
+    // 洞顶穹顶：高位半球（BackSide），远离俯视相机故不遮挡，仅在地块边缘形成幽暗洞顶框景
+    var R = Math.max(w, d) * 0.62 + 30;
+    var dome = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 18, 0, TAU, 0, Math.PI / 2),
+      new THREE.MeshStandardMaterial({ color: 0x20252c, roughness: 1, side: THREE.BackSide }));
+    dome.position.set(cx, 0, cz);
+    scene.add(dome);
+    // 四壁顶缘垂下的钟乳石边饰（装饰，纯视觉）
+    var lipMat = new THREE.MeshStandardMaterial({ color: 0x33383f, roughness: 1, flatShading: true });
+    function addLip(ax, az, dx, dz, len) {
+      for (var s = 4; s < len; s += 8) {
+        var px = ax + dx * s, pz = az + dz * s, cl = 1.6 + Math.random() * 2.6;
+        var cone = new THREE.Mesh(new THREE.ConeGeometry(0.55 + Math.random() * 0.5, cl, 6), lipMat);
+        cone.position.set(px, topY - cl / 2, pz);
+        cone.rotation.x = Math.PI;   // 尖朝下
+        scene.add(cone);
+      }
+    }
+    addLip(MAP.x1 + 2, MAP.z1 - 2, 1, 0, w);
+    addLip(MAP.x1 + 2, MAP.z2 + 2, 1, 0, w);
+    addLip(MAP.x1 + 2, MAP.z2 + 2, 0, 1, d);
+    addLip(MAP.x2 - 2, MAP.z2 + 2, 0, 1, d);
+    return;
+  }
   var dirtMat = new THREE.MeshStandardMaterial({ color: 0x7d5a36, roughness: 1 });
   var t = 3.4;
   // 悬崖高度随地形自适应：顶部高于地形最高点、底部低于最低点（平地关 TER_MIN=TER_MAX=0，即原来的矮坝）
@@ -848,6 +1016,7 @@ scene.add(voidG);
 
 /* ================= 云朵 ================= */
 var clouds = [];
+if (!IS_CAVE) {
 var cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: rainy ? 0.75 : 0.92 });
 for (var ci = 0; ci < 12; ci++) {
   var cg = new THREE.Group();
@@ -862,8 +1031,11 @@ for (var ci = 0; ci < 12; ci++) {
   scene.add(cg);
   clouds.push(cg);
 }
+}
 
 /* ================= 草簇（实例化） ================= */
+var tuftData = [];
+if (!IS_CAVE) {
 var tuftGeo = new THREE.ConeGeometry(0.16, 0.85, 4);
 tuftGeo.translate(0, 0.42, 0);
 var tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ roughness: 1 }), GRASS_COUNT);
@@ -878,9 +1050,11 @@ for (var ti = 0; ti < GRASS_COUNT; ti++) {
 }
 tufts.instanceColor.needsUpdate = true;
 scene.add(tufts);
+}
 
 /* ================= 野花 ================= */
 var flowers = [];
+if (!IS_CAVE) {
 var flowerColors = [0xff9ec4, 0xffffff, 0xffe066, 0xc39bd3];
 for (var fi = 0; fi < FLOWER_COUNT; fi++) {
   var fg = new THREE.Group();
@@ -895,10 +1069,16 @@ for (var fi = 0; fi < FLOWER_COUNT; fi++) {
   scene.add(fg);
   flowers.push(fg);
 }
+}
 
 /* ================= 树木（实例化 + 空间哈希 + 界内回卷） ================= */
 var trees = [];
 var rocks = [];   // 岩石障碍（仅山地关填充）
+var caveObs = [];    // 洞穴障碍（石笋/石柱/水晶），碰撞
+var poolZones = [];  // 洞穴水潭（圆形静水，碰撞 + 倒影 + 波纹）
+var slateTraps = []; // 脆弱石板陷阱（踩中半陷坑中，非碰撞障碍）
+var crystals = [];   // 水晶（caveObs 子集引用，便于发光动画与彩色点光）
+var ripples = [];    // 水潭波纹（小牛靠近时扩散）
 for (var i = 0; i < TREE_COUNT; i++) {
   trees.push({
     x: rand(MAP.x1 + 5, MAP.x2 - 5), z: rand(MAP.z2 + 5, MAP.z1 - 5),
@@ -1041,13 +1221,24 @@ function pushOutOfWater(x, z) {
     var q = distToPolyline(x, z, rp.pts);
     if (q.d < rp.half) {
       // 沿最近点外法线推到对岸（half+余量）；两侧都试，优先选既不在水里也不被树墙堵的点
-      var nx = x - q.cx, nz = z - q.cz, nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+      var nx = x - q.cx, nz = z - q.cz, nl = Math.hypot(nx, nz);
+      if (nl < 0.001) { nx = -Math.sin(q.ang); nz = Math.cos(q.ang); }  // 正好压在中心线上：改用该段法线
+      else { nx /= nl; nz /= nl; }
       var tg = rp.half + 0.7;
       var cands = [{ x: q.cx + nx * tg, z: q.cz + nz * tg }, { x: q.cx - nx * tg, z: q.cz - nz * tg }];
       for (var c = 0; c < cands.length; c++)
         if (!inWater(cands[c].x, cands[c].z) && !blocked(cands[c].x, cands[c].z)) return cands[c];
       for (var c2 = 0; c2 < cands.length; c2++)
         if (!inWater(cands[c2].x, cands[c2].z)) return cands[c2];
+      // 两侧一步都没出水（河湾内侧）：沿法线逐步推远，直到离开水域（应对蜿蜒绳状河）
+      for (var s = 0; s < 2; s++) {
+        var sgn = s === 0 ? 1 : -1;
+        for (var step = 1; step <= 5; step++) {
+          var td = tg + step * 1.6;
+          var px = q.cx + nx * sgn * td, pz = q.cz + nz * sgn * td;
+          if (!inWater(px, pz)) return { x: px, z: pz };
+        }
+      }
       return cands[0];
     }
   }
@@ -1221,13 +1412,16 @@ function buildAssetMaze(cfg) {
       if ((rc2.i % 2) !== (rc2.j % 2)) edges.push(rc2);   // 偶奇/奇偶 = 走廊交叉格 = 天然过河点
     }
     if (!edges.length) edges = rl.slice();                 // 极端情况：整条河都在房间格，则任取
-    var stride = Math.max(1, Math.floor(edges.length / 4) || 1);
-    for (var bk = 0; bk < edges.length; bk += stride) addBridge(edges[bk].i, edges[bk].j);
-    if (edges.length) addBridge(edges[(edges.length / 2) | 0].i, edges[(edges.length / 2) | 0].j);
+    // 每条河最多 2 座桥（最少 1 座）：大幅减少河上桥数量，让小牛沿河探索、跨河点更克制
+    var bcount = Math.min(2, edges.length);
+    var bidx = [];
+    if (edges.length <= 2) bidx = [Math.floor((edges.length - 1) / 2)];
+    else { for (var _b = 1; _b <= bcount; _b++) bidx.push(Math.round(edges.length * _b / (bcount + 1))); }
+    for (var bk = 0; bk < bidx.length; bk++) addBridge(edges[bidx[bk]].i, edges[bidx[bk]].j);
   }
-  // 房间格(奇,奇)上的河格也设为桥，保证可达房间不泡水
-  for (var gi0 = 0; gi0 < GW; gi0++) for (var gj0 = 0; gj0 < GH; gj0++)
-    if ((gi0 % 2 === 1) && (gj0 % 2 === 1) && isRiverCell(gi0, gj0)) addBridge(gi0, gj0);
+  // 开放田野（isOpen）不再给“房间格上的河格”一律架桥：草料/生成点本就会避水（spawnBlocked），
+  // 小牛也能绕水走。去掉这条可大幅减少河上桥的数量，让河流更自然、跨河点更克制。
+  // 每条河已保证至少 1~2 座边桥（见上），连通性由走查测试验证。
   // —— 可达房间（自由探索 = 全部房间格，草料可撒满整片田野）——
   var seen = [];
   for (var i3 = 0; i3 < rw; i3++) { seen[i3] = []; for (var j3 = 0; j3 < rh; j3++) seen[i3][j3] = false; }
@@ -1242,7 +1436,8 @@ function buildAssetMaze(cfg) {
   var shelterRoom = null;
   for (var si = 0; si < reach.length; si++) {
     var rr = reach[si];
-    if (!riverAdjacent(rr.i, rr.j) && (!shelterRoom || rr.d > shelterRoom.d)) shelterRoom = rr;
+    // 谷仓中心格也必须干燥（不能泡在水里），且四邻不挨着河
+    if (!isRiverCell(rr.i * 2 + 1, rr.j * 2 + 1) && !riverAdjacent(rr.i, rr.j) && (!shelterRoom || rr.d > shelterRoom.d)) shelterRoom = rr;
   }
   if (!shelterRoom) shelterRoom = reach[reach.length - 1];
 
@@ -1496,7 +1691,16 @@ function inMazeBox(x, z, pad) {
 /* 回卷树木生成点专用：避水/桥/迷宫墙/迷宫占地/界外 */
 function spawnBlocked(x, z) {
   if (!inBounds(x, z, 2)) return true;
-  if (waterZones.length && inWater(x, z)) return true;
+  if (IS_CAVE) {
+    if (caveObs.length && queryCaveObs(x, z, 1.5).length > 0) return true;
+    if (poolZones.length && inPool(x, z)) return true;
+    if (slateTraps.length) for (var _st = 0; _st < slateTraps.length; _st++) {
+      var _s = slateTraps[_st];
+      if (!_s.broken && dist2(x, z, _s.x, _s.z) < (_s.r + 1.5) * (_s.r + 1.5)) return true;
+    }
+  } else {
+    if (waterZones.length && inWater(x, z)) return true;
+  }
   if (bridgeZones.length && onBridge(x, z)) return true;
   if (rocks.length && queryRocks(x, z, 1.5).length > 0) return true;
   if (maze && queryWalls(x, z, 1.5).length > 0) return true;
@@ -1507,15 +1711,25 @@ function blocked(x, z) {
   if (queryTrees(x, z, COW_R).length > 0) return true;
   if (rocks.length && queryRocks(x, z, COW_R).length > 0) return true;
   if (maze && queryWalls(x, z, COW_R).length > 0) return true;
-  if (waterZones.length && inWater(x, z) && !onBridge(x, z)) return true;
+  if (IS_CAVE) {
+    if (caveObs.length && queryCaveObs(x, z, COW_R).length > 0) return true;
+    if (poolZones.length && inPool(x, z)) return true;
+  } else {
+    if (waterZones.length && inWater(x, z) && !onBridge(x, z)) return true;
+  }
   return false;
 }
-/* 生成点专用：树/墙/水/桥 全避开（含岩石） */
+/* 生成点专用：树/墙/水/桥 全避开（含岩石、洞穴障碍、水潭） */
 function zoneBlocked(x, z, r) {
   if (queryTrees(x, z, r).length > 0) return true;
   if (rocks.length && queryRocks(x, z, r).length > 0) return true;
   if (maze && queryWalls(x, z, r).length > 0) return true;
-  if (waterZones.length && inWater(x, z)) return true;
+  if (IS_CAVE) {
+    if (caveObs.length && queryCaveObs(x, z, r).length > 0) return true;
+    if (poolZones.length && inPool(x, z)) return true;
+  } else {
+    if (waterZones.length && inWater(x, z)) return true;
+  }
   if (bridgeZones.length && onBridge(x, z)) return true;
   return false;
 }
@@ -1559,6 +1773,36 @@ function queryRocks(x, z, r) {
     if (dx * dx + dz * dz < rr * rr) res.push(rk);
   }
   return res;
+}
+/* 洞穴障碍空间哈希（与树同法）：石笋/石柱/水晶 */
+var caveGrid = new Map();
+var CAVE_CELL = 12;
+function caveGridAdd(o) {
+  var k = Math.floor(o.x / CAVE_CELL) + ',' + Math.floor(o.z / CAVE_CELL);
+  var a = caveGrid.get(k); if (!a) { a = []; caveGrid.set(k, a); } a.push(o);
+}
+function queryCaveObs(x, z, r) {
+  var res = [];
+  if (!caveObs.length) return res;
+  var cx = Math.floor(x / CAVE_CELL), cz = Math.floor(z / CAVE_CELL);
+  var rad = Math.ceil((r + 1.8) / CAVE_CELL);
+  for (var i = -rad; i <= rad; i++) for (var j = -rad; j <= rad; j++) {
+    var a = caveGrid.get((cx + i) + ',' + (cz + j));
+    if (!a) continue;
+    for (var k = 0; k < a.length; k++) {
+      var o = a[k], dx = x - o.x, dz = z - o.z, rr = o.r + r;
+      if (dx * dx + dz * dz < rr * rr) res.push(o);
+    }
+  }
+  return res;
+}
+function inPool(x, z) {
+  for (var i = 0; i < poolZones.length; i++) {
+    var p = poolZones[i];
+    var dx = x - p.x, dz = z - p.z;
+    if (dx * dx + dz * dz < p.r * p.r) return true;
+  }
+  return false;
 }
 if (ROCK_COUNT > 0) {
   for (var ri0 = 0; ri0 < ROCK_COUNT; ri0++) {
@@ -1615,11 +1859,172 @@ if (ROCK_COUNT > 0) {
   }
 }
 
+/* ================= 洞穴景观（钟乳石/石笋/石柱/水潭/水晶/脆石板陷阱） ================= */
+(function buildCave() {
+  if (!IS_CAVE) return;
+  var CEIL = 22;   // 与 buildMapBounds 洞顶齐平
+  // 简易等距环境贴图：冷色上亮下暗渐变，让水面有“倒影”质感（无需渲染目标，性能友好）
+  function makeCaveEnvTexture() {
+    try {
+      var S = 32, data = new Uint8Array(S * S * 4);
+      for (var y = 0; y < S; y++) {
+        var t = y / (S - 1);
+        var r = (24 + t * 96) | 0, g = (34 + t * 116) | 0, b = (56 + t * 130) | 0;
+        for (var x = 0; x < S; x++) {
+          var i = (y * S + x) * 4; data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
+        }
+      }
+      var tex = new THREE.DataTexture(data, S, S, THREE.RGBAFormat);
+      tex.needsUpdate = true; tex.mapping = THREE.EquirectangularReflectionMapping;
+      return tex;
+    } catch (e) { return null; }
+  }
+  function caveFree(x, z, r) {
+    if (x * x + z * z < 64) return false;                                                  // 别压出生点
+    if (maze && maze.entrance && dist2(x, z, maze.entrance.x, maze.entrance.z) < 81) return false;  // 别堵入口走廊
+    if (shelter && dist2(x, z, shelter.x, shelter.z) < 100) return false;                  // 别压庇护所
+    if (inMazeBox(x, z, 6)) return false;
+    for (var k = 0; k < caveObs.length; k++) { var d = caveObs[k]; if (dist2(x, z, d.x, d.z) < (d.r + r + 2) * (d.r + r + 2)) return false; }
+    for (var p = 0; p < poolZones.length; p++) { var pp = poolZones[p]; if (dist2(x, z, pp.x, pp.z) < (pp.r + r + 2) * (pp.r + r + 2)) return false; }
+    for (var s = 0; s < slateTraps.length; s++) { var st = slateTraps[s]; if (!st.broken && dist2(x, z, st.x, st.z) < (st.r + r + 2) * (st.r + r + 2)) return false; }
+    return true;
+  }
+  // 在某半径内重试找一个不冲突的位置，回调拿到 (x,z)
+  function placeSafe(r, cb) {
+    for (var t = 0; t < 220; t++) {
+      var x = rand(MAP.x1 + 6, MAP.x2 - 6), z = rand(MAP.z2 + 6, MAP.z1 - 6);
+      if (!caveFree(x, z, r)) continue;
+      cb(x, z); return true;
+    }
+    return false;
+  }
+  var stoneMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.95, flatShading: true });
+  var darkStone = new THREE.MeshStandardMaterial({ color: 0x44494f, roughness: 1, flatShading: true });
+
+  // 钟乳石：自洞顶垂下（装饰，无碰撞）
+  var stalN = L.stalactites || 0;
+  for (var sN = 0; sN < stalN; sN++) {
+    var sax = rand(MAP.x1 + 4, MAP.x2 - 4), saz = rand(MAP.z2 + 4, MAP.z1 - 4);
+    if (sax * sax + saz * saz < 100) continue;
+    var sl = 2.5 + rand(0, 4.5);
+    var cone = new THREE.Mesh(new THREE.ConeGeometry(0.5 + rand(0, 0.7), sl, 7), darkStone);
+    cone.position.set(sax, CEIL - sl / 2, saz);
+    cone.rotation.x = Math.PI; cone.castShadow = true;
+    scene.add(cone);
+  }
+
+  // 石笋：地面突起（碰撞）
+  var stagN = L.stalagmites || 0;
+  for (var gN = 0; gN < stagN; gN++) {
+    placeSafe(1.0, function (x, z) {
+      var h = 1.4 + rand(0, 2.6), rr = 0.7 + rand(0, 0.6);
+      var m = new THREE.Mesh(new THREE.ConeGeometry(rr, h, 8), stoneMat);
+      m.position.set(x, h / 2, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+      caveObs.push({ x: x, z: z, r: rr * 0.9, glow: false }); caveGridAdd(caveObs[caveObs.length - 1]);
+    });
+  }
+
+  // 石柱：地面到洞顶（碰撞）
+  var pilN = L.pillars || 0;
+  for (var pN = 0; pN < pilN; pN++) {
+    placeSafe(1.4, function (x, z) {
+      var rr = 1.0 + rand(0, 0.5);
+      var m = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.8, rr, CEIL, 10), stoneMat);
+      m.position.set(x, CEIL / 2, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+      caveObs.push({ x: x, z: z, r: rr * 0.95, glow: false }); caveGridAdd(caveObs[caveObs.length - 1]);
+    });
+  }
+
+  // 水潭：圆形静水（倒影 + 波纹，碰撞）
+  var poolN = L.pools || 0;
+  var poolEnv = makeCaveEnvTexture();
+  for (var pn = 0; pn < poolN; pn++) {
+    placeSafe(3.0, function (x, z) {
+      var pr = 3.0 + rand(0, 2.5);
+      var pmat = new THREE.MeshStandardMaterial({ color: 0x2f6f93, roughness: 0.12, metalness: 0.55,
+        transparent: true, opacity: 0.9, envMap: poolEnv, envMapIntensity: 0.9 });
+      var disc = new THREE.Mesh(new THREE.CircleGeometry(pr, 36), pmat);
+      disc.rotation.x = -Math.PI / 2; disc.position.set(x, 0.05, z); disc.receiveShadow = true; scene.add(disc);
+      var rim = new THREE.Mesh(new THREE.TorusGeometry(pr, 0.32, 6, 28), darkStone);
+      rim.rotation.x = -Math.PI / 2; rim.position.set(x, 0.1, z); scene.add(rim);
+      poolZones.push({ x: x, z: z, r: pr });
+    });
+  }
+
+  // 水晶：发光多彩（仅第 15 关），碰撞 + 彩色点光（控制点光源数量）
+  var cryN = L.crystals || 0;
+  var crystalColors = [0xff5d8f, 0x5dd0ff, 0x9b5dff, 0x5dff9b, 0xffd35d, 0xff7a5d];
+  var lightBudget = 6;
+  for (var cni = 0; cni < cryN; cni++) {
+    placeSafe(1.0, function (x, z) {
+      var col = crystalColors[(rand() * crystalColors.length) | 0];
+      var grp = new THREE.Group();
+      var ch = 1.6 + rand(0, 1.6);
+      var mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.1 });
+      var shardN = 3 + ((rand() * 3) | 0);
+      for (var sn = 0; sn < shardN; sn++) {
+        var sh = new THREE.Mesh(new THREE.ConeGeometry(0.28 + rand(0, 0.18), ch * (0.6 + rand(0, 0.5)), 6), mat);
+        sh.position.set(rand(-0.5, 0.5), ch * 0.4, rand(-0.5, 0.5));
+        sh.rotation.z = rand(-0.4, 0.4); sh.rotation.x = rand(-0.3, 0.3); grp.add(sh);
+      }
+      grp.position.set(x, 0, z); grp.castShadow = true; scene.add(grp);
+      var cl = { x: x, z: z, r: 0.9, glow: true, mat: mat, phase: rand(0, TAU), light: null };
+      if (lightBudget > 0) {
+        lightBudget--;
+        var pl = new THREE.PointLight(col, 1.4, 16, 1.8); pl.position.set(x, ch * 0.5, z); scene.add(pl); cl.light = pl;
+      }
+      crystals.push(cl); caveObs.push(cl); caveGridAdd(cl);
+    });
+  }
+
+  // 脆弱石板陷阱：踩中半陷坑中，挣扎 2 秒才能出来（非碰撞障碍）
+  var trapN = L.traps || 0;
+  for (var tni = 0; tni < trapN; tni++) {
+    placeSafe(1.6, function (x, z) {
+      var tr = 1.5;
+      var tile = new THREE.Mesh(new THREE.BoxGeometry(tr * 2, 0.25, tr * 2),
+        new THREE.MeshStandardMaterial({ color: 0x837a63, roughness: 1, flatShading: true }));
+      tile.position.set(x, 0.13, z); tile.receiveShadow = true; scene.add(tile);
+      var pts = [];
+      for (var cg = 0; cg < 5; cg++) { var a0 = rand(0, TAU), a1 = a0 + rand(0.6, 1.6);
+        pts.push(new THREE.Vector3(Math.cos(a0) * 0.2, 0.27, Math.sin(a0) * 0.2), new THREE.Vector3(Math.cos(a1) * tr * 0.9, 0.27, Math.sin(a1) * tr * 0.9)); }
+      var crack = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x2c2820 }));
+      crack.position.set(x, 0, z); scene.add(crack);
+      var pit = new THREE.Mesh(new THREE.CylinderGeometry(tr, tr * 0.6, 2.4, 16, 1, true),
+        new THREE.MeshStandardMaterial({ color: 0x14110c, roughness: 1, side: THREE.DoubleSide }));
+      pit.position.set(x, -1.2, z); pit.visible = false; scene.add(pit);
+      slateTraps.push({ x: x, z: z, r: tr, broken: false, tile: tile, pit: pit });
+    });
+  }
+
+  // 导航网格：洞穴障碍格标记阻挡（让自动驾驶绕开石笋/石柱/水晶/水潭）
+  if (maze && maze.navGrid && maze.isOpen) {
+    var _gc = maze.cell, _gw = maze.gw, _g0z = maze.gz(0);
+    function markObsArr(arr) {
+      for (var _r = 0; _r < arr.length; _r++) {
+        var _o = arr[_r];
+        var _ci = Math.round(_o.x / _gc + (_gw - 1) / 2);
+        var _cj = Math.round((_g0z - _o.z) / _gc);
+        if (_ci < 0 || _ci >= _gw || _cj < 0 || _cj >= maze.gh) continue;
+        var _cx = maze.gx(_ci), _cz = maze.gz(_cj);
+        if (Math.hypot(_o.x - _cx, _o.z - _cz) < _o.r + 0.5) maze.navGrid[_ci][_cj] = true;
+      }
+    }
+    markObsArr(caveObs);
+    for (var _p = 0; _p < poolZones.length; _p++) {
+      var _pp = poolZones[_p];
+      var _ci = Math.round(_pp.x / _gc + (_gw - 1) / 2);
+      var _cj = Math.round((_g0z - _pp.z) / _gc);
+      if (_ci >= 0 && _ci < _gw && _cj >= 0 && _cj < maze.gh) maze.navGrid[_ci][_cj] = true;
+    }
+  }
+})();
+
 /* ================= 小牛 ================= */
 var cow = {
   pos: new THREE.Vector3(0, 0, 0),
   heading: 0, target: null, moving: false,
-  walkPhase: 0, jumpT: 0, blown: 0, liftY: 0, trapped: false,
+  walkPhase: 0, jumpT: 0, blown: 0, liftY: 0, trapped: false, trapT: 0, trapOffset: 0, trapTile: null,
   group: new THREE.Group(),
   torso: null, head: null, tail: null, legs: []
 };
@@ -2327,6 +2732,32 @@ function drawMinimap() {
         (bzz.x2 - bzz.x1) * SC, (bzz.z2 - bzz.z1) * SC);
     }
   }
+  // 洞穴：水潭(蓝圈)、水晶(彩点)、脆石板陷阱(红块，踩碎后变暗)
+  if (IS_CAVE) {
+    for (var _pz = 0; _pz < poolZones.length; _pz++) {
+      var _pzz = poolZones[_pz];
+      var _px = _pzz.x - cow.pos.x, _pzzz = _pzz.z - cow.pos.z;
+      if (Math.abs(_px) < RANGE && Math.abs(_pzzz) < RANGE) {
+        mm.strokeStyle = 'rgba(70,160,220,0.95)'; mm.lineWidth = 2;
+        mm.beginPath(); mm.arc(_px * SC, _pzzz * SC, Math.max(3, _pzz.r * SC), 0, TAU); mm.stroke();
+      }
+    }
+    for (var _cz = 0; _cz < crystals.length; _cz++) {
+      var _ccr = crystals[_cz];
+      var _cxv = _ccr.x - cow.pos.x, _czv = _ccr.z - cow.pos.z;
+      if (Math.abs(_cxv) < RANGE && Math.abs(_czv) < RANGE) {
+        mm.fillStyle = '#c97bff'; mm.beginPath(); mm.arc(_cxv * SC, _czv * SC, 3, 0, TAU); mm.fill();
+      }
+    }
+    for (var _tz = 0; _tz < slateTraps.length; _tz++) {
+      var _tt = slateTraps[_tz];
+      var _txv = _tt.x - cow.pos.x, _tzv = _tt.z - cow.pos.z;
+      if (Math.abs(_txv) < RANGE && Math.abs(_tzv) < RANGE) {
+        mm.fillStyle = _tt.broken ? 'rgba(180,60,40,0.55)' : '#e8503a';
+        mm.fillRect(_txv * SC - 2.5, _tzv * SC - 2.5, 5, 5);
+      }
+    }
+  }
   for (var fi = 0; fi < foods.length; fi++) {
     var f = foods[fi];
     var fdx = f.pos.x - cow.pos.x, fdz = f.pos.z - cow.pos.z;
@@ -2476,6 +2907,43 @@ function updateWater(dt) {
   }
 }
 
+/* 洞穴特效：提灯跟随小牛、水晶呼吸发光、水潭靠近起波纹 */
+function spawnRipple(x, z, baseR) {
+  var geo = new THREE.RingGeometry(baseR * 0.45, baseR * 0.58, 28);
+  var mat = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+  var m = new THREE.Mesh(geo, mat);
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.12, z); scene.add(m);
+  ripples.push({ mesh: m, life: 1.1, max: 1.1, r: baseR });
+}
+function updateCaveFx(dt, t) {
+  if (!IS_CAVE) return;
+  if (cowLight) cowLight.position.set(cow.group.position.x, cow.group.position.y + 2.8, cow.group.position.z);
+  for (var i = 0; i < crystals.length; i++) {
+    var c = crystals[i], k = 0.7 + 0.3 * Math.sin(t * 2.2 + c.phase);
+    if (c.mat) c.mat.emissiveIntensity = k;
+    if (c.light) c.light.intensity = 1.0 + 0.8 * Math.sin(t * 2.2 + c.phase);
+  }
+  for (var p = 0; p < poolZones.length; p++) {
+    var po = poolZones[p];
+    if (po.rippleT === undefined) po.rippleT = 0;
+    po.rippleT -= dt;
+    if (po.rippleT <= 0 && Math.hypot(cow.pos.x - po.x, cow.pos.z - po.z) < po.r + 2.6) {
+      po.rippleT = 0.45; spawnRipple(po.x, po.z, po.r);
+    }
+  }
+  for (var r = ripples.length - 1; r >= 0; r--) {
+    var rp = ripples[r];
+    rp.life -= dt;
+    var s = 1 + (1 - rp.life / rp.max) * (rp.r * 1.6);
+    rp.mesh.scale.set(s, s, s);
+    rp.mesh.material.opacity = Math.max(0, rp.life / rp.max) * 0.6;
+    if (rp.life <= 0) {
+      scene.remove(rp.mesh); rp.mesh.material.dispose(); rp.mesh.geometry.dispose();
+      ripples.splice(r, 1);
+    }
+  }
+}
+
 /* ================= 小牛更新 ================= */
 /* ================= 迷宫寻路（中继点导航） ================= */
 /* 目标在迷宫内时，沿可走格 BFS 求出下一格中心作为中继点：
@@ -2578,17 +3046,46 @@ function navWaypoint(tx, tz) {
 }
 
 function updateCow(dt, t) {
-  // 小牛脚下高度：平地=0；山地贴合起伏；站在小桥上=桥面顶面（产生“上桥抬高、下桥落回”的正确物理交互）
+  // —— 脆弱石板陷阱：踩中半陷坑中，挣扎 2 秒才能出来，期间不能操作 ——
+  if (slateTraps.length) {
+    if (!cow.trapped) {
+      for (var _t = 0; _t < slateTraps.length; _t++) {
+        var _tr = slateTraps[_t];
+        if (!_tr.broken && dist2(cow.pos.x, cow.pos.z, _tr.x, _tr.z) < _tr.r * _tr.r) {
+          cow.trapped = true; cow.trapT = 0; cow.trapTile = _tr; break;
+        }
+      }
+    }
+    if (cow.trapped) {
+      cow.trapT += dt;
+      var _off;
+      if (cow.trapT < 0.35) _off = -1.2 * (cow.trapT / 0.35);                    // 陷入
+      else if (cow.trapT < 2.35) _off = -1.2 + Math.sin(cow.trapT * 22) * 0.05; // 挣扎 2 秒（小幅抖动）
+      else if (cow.trapT < 2.8) _off = -1.2 * (1 - (cow.trapT - 2.35) / 0.45);  // 挣脱出来
+      else {
+        cow.trapped = false; _off = 0;
+        if (cow.trapTile) {
+          cow.trapTile.broken = true;
+          if (cow.trapTile.pit) cow.trapTile.pit.visible = true;
+          if (cow.trapTile.tile) cow.trapTile.tile.visible = false;
+          cow.trapTile = null;
+        }
+      }
+      cow.trapOffset = _off;
+    } else cow.trapOffset = 0;
+  } else cow.trapOffset = 0;
+
+  // 小牛脚下高度：平地=0；山地贴合起伏；站在小桥上=桥面顶面（“上桥抬高、下桥落回”）；陷进石板坑=下沉
   var onBr = bridgeZones.length && onBridge(cow.pos.x, cow.pos.z);
   var cowFootY = onBr ? BRIDGE_DECK_TOP : cowGroundY(cow.pos.x, cow.pos.z);
+  var _extra = cow.trapOffset || 0;
   if (cow.jumpT > 0) {
     cow.jumpT -= dt;
     var p = 1 - Math.max(0, cow.jumpT) / 0.32;
-    cow.group.position.y = cowFootY + Math.sin(p * Math.PI) * 0.55;
-  } else {
-    // 平滑插值：上桥时小牛平滑抬升到桥面、离开桥平滑落回地面（不再贴着水面/穿模）
-    cow.group.position.y += (cowFootY - cow.group.position.y) * Math.min(1, dt * 8);
+    _extra += Math.sin(p * Math.PI) * 0.55;
   }
+  var _targetY = cowFootY + _extra;
+  cow.group.position.y += (_targetY - cow.group.position.y) * Math.min(1, dt * 12);
 
   // 被龙卷风卷住期间无法控制
   if ((state === 'play' || state === 'cleared') && cow.target && !cow.trapped) {
@@ -3012,6 +3509,7 @@ function updateTrees() {
 }
 
 function updateTufts() {
+  if (!tufts) return;   // 洞穴关无草簇
   for (var i = 0; i < tuftData.length; i++) {
     var tp = tuftData[i];
     // 草簇静止分布在地图内（不再回卷）；只做一次“别让草长在水里”的纠正
@@ -3118,7 +3616,7 @@ function win() {
   if (curLevel > 0) {
     clearedSet.add(curLevel);
     saveCleared();
-    document.getElementById('btnNext').style.display = curLevel < 5 ? '' : 'none';
+    document.getElementById('btnNext').style.display = curLevel < 15 ? '' : 'none';
   }
   winOverlay.style.display = 'flex';
   sndWin();
@@ -3156,6 +3654,7 @@ function loop() {
   updateTufts();
   updateFlowers();
   updateWater(dt);
+  updateCaveFx(dt, t);
   updateRain(dt);
   updateSnow(dt, t);
   updateWind(dt, t);

@@ -898,15 +898,18 @@ function queryTrees(x, z, r) {
  * 自由探索关：整片田野是开放草地，没有迷宫墙。保留自然河流（waterZones=AABB）
  * 与可通行的小桥（bridgeZones=AABB）。树墙（wallGrid）在开放关不再生成，
  * 环境树由全局 TREE_COUNT 在整张地图内散布作为点缀。 */
-var waterZones = [];   // 水域 AABB {x1,z1,x2,z2}
+var waterZones = [];   // 水域 broad-phase AABB（每条河一个外包盒）；细粒度判定走 riverPolys
+var riverPolys = [];   // 绳状河流折线：{ pts:[{x,z}...], half, bbox } —— 碰撞/寻路/渲染统一用它
 var bridgeZones = [];  // 桥面 AABB
 var waterMats = [];    // 水面材质（流动动画）
+var BRIDGE_DECK_TOP = 0.5;  // 桥面顶面高度：小牛上桥时脚底贴此高度（与桥面几何一致）
 var mazeTrees = [];    // 迷宫树木（fixed：不随小牛回卷）
 
 function inWater(x, z) {
-  for (var i = 0; i < waterZones.length; i++) {
-    var w = waterZones[i];
-    if (x > w.x1 && x < w.x2 && z > w.z1 && z < w.z2) return true;
+  for (var i = 0; i < riverPolys.length; i++) {
+    var rp = riverPolys[i];
+    if (x < rp.bbox.x1 || x > rp.bbox.x2 || z < rp.bbox.z1 || z > rp.bbox.z2) continue;
+    if (distToPolyline(x, z, rp.pts).d < rp.half) return true;
   }
   return false;
 }
@@ -919,37 +922,62 @@ function onBridge(x, z) {
 }
 /* 把点推出水域：沿最小穿透方向上岸，且岸不能在水中/树墙里 */
 function pushOutOfWater(x, z) {
-  for (var i = 0; i < waterZones.length; i++) {
-    var w = waterZones[i];
-    if (x > w.x1 && x < w.x2 && z > w.z1 && z < w.z2) {
-      var cands = [
-        { x: w.x1 - 0.7, z: z }, { x: w.x2 + 0.7, z: z },
-        { x: x, z: w.z1 - 0.7 }, { x: x, z: w.z2 + 0.7 }
-      ];
-      for (var c = 0; c < cands.length; c++) {
-        if (!inWater(cands[c].x, cands[c].z) && !(maze && queryWalls(cands[c].x, cands[c].z, 0.25).length > 0)) return cands[c];
-      }
-      // 四邻被水/树墙占住（密树迷宫可能出现）：扫描迷宫网格，移到最近可站立格
-      if (maze) {
-        var bx = null, bz = null, bd = 1e9;
-        for (var gi = 0; gi < maze.gw; gi++) {
-          for (var gj = 0; gj < maze.gh; gj++) {
-            var ccx = maze.gx(gi), ccz = maze.gz(gj);
-            if (queryWalls(ccx, ccz, 0.02).length || inWater(ccx, ccz)) continue;
-            var dd = (ccx - x) * (ccx - x) + (ccz - z) * (ccz - z);
-            if (dd < bd) { bd = dd; bx = ccx; bz = ccz; }
-          }
-        }
-        if (bx !== null) return { x: bx, z: bz };
-      }
-      for (var c2 = 0; c2 < cands.length; c2++) {
+  for (var i = 0; i < riverPolys.length; i++) {
+    var rp = riverPolys[i];
+    if (x < rp.bbox.x1 || x > rp.bbox.x2 || z < rp.bbox.z1 || z > rp.bbox.z2) continue;
+    var q = distToPolyline(x, z, rp.pts);
+    if (q.d < rp.half) {
+      // 沿最近点外法线推到对岸（half+余量）；两侧都试，优先选既不在水里也不被树墙堵的点
+      var nx = x - q.cx, nz = z - q.cz, nl = Math.hypot(nx, nz) || 1; nx /= nl; nz /= nl;
+      var tg = rp.half + 0.7;
+      var cands = [{ x: q.cx + nx * tg, z: q.cz + nz * tg }, { x: q.cx - nx * tg, z: q.cz - nz * tg }];
+      for (var c = 0; c < cands.length; c++)
+        if (!inWater(cands[c].x, cands[c].z) && !blocked(cands[c].x, cands[c].z)) return cands[c];
+      for (var c2 = 0; c2 < cands.length; c2++)
         if (!inWater(cands[c2].x, cands[c2].z)) return cands[c2];
-      }
       return cands[0];
     }
   }
   return null;
 }
+/* 河流几何工具：Catmull-Rom 平滑中心线 + 点-折线最近距离（碰撞/渲染/寻路共用） */
+function catmullRomCenterline(wpts, perSeg) {
+  if (wpts.length < 2) return wpts.slice();
+  var out = [], n = wpts.length;
+  function P(i) { return wpts[Math.max(0, Math.min(n - 1, i))]; }
+  for (var i = 0; i < n - 1; i++) {
+    var p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2);
+    for (var s = 0; s < perSeg; s++) {
+      var t = s / perSeg, t2 = t * t, t3 = t2 * t;
+      var x = 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+      var z = 0.5 * (2 * p1.z + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3);
+      out.push({ x: x, z: z });
+    }
+  }
+  out.push({ x: wpts[n - 1].x, z: wpts[n - 1].z });
+  return out;
+}
+function distToPolyline(x, z, pts) {
+  var best = 1e18, bcx = 0, bcz = 0, bang = 0;
+  for (var i = 0; i + 1 < pts.length; i++) {
+    var ax = pts[i].x, az = pts[i].z, bx = pts[i + 1].x, bz = pts[i + 1].z;
+    var dx = bx - ax, dz = bz - az, len2 = dx * dx + dz * dz;
+    var t = len2 > 0 ? ((x - ax) * dx + (z - az) * dz) / len2 : 0;
+    if (t < 0) t = 0; else if (t > 1) t = 1;
+    var cx = ax + dx * t, cz = az + dz * t, dd = Math.hypot(x - cx, z - cz);
+    if (dd < best) { best = dd; bcx = cx; bcz = cz; bang = Math.atan2(dz, dx); }
+  }
+  return { d: best, cx: bcx, cz: bcz, ang: bang };
+}
+function bridgeAngleAt(x, z) {
+  var bestAng = 0, bestD = 1e18;
+  for (var ri = 0; ri < riverPolys.length; ri++) {
+    var q = distToPolyline(x, z, riverPolys[ri].pts);
+    if (q.d < bestD) { bestD = q.d; bestAng = q.ang; }
+  }
+  return bestAng;
+}
+
 function makeWaterTexture() {
   var c = document.createElement('canvas'); c.width = 128; c.height = 128;
   var g = c.getContext('2d');
@@ -1042,6 +1070,23 @@ function buildAssetMaze(cfg) {
     riverLists.push(rlist);
   }
   function isRiverCell(i, j) { return !!riverCells[i + ',' + j]; }
+  // 绳状河流：把每条河的航点（世界坐标）平滑成密集中心线；碰撞/寻路/渲染统一用它，
+  // 宽度 thin（RIVER_HALF≈0.3*cell），拐角由 Catmull-Rom 自然成弧线，不再是方块水格拼出来的直棱直角。
+  var RIVER_HALF = cell * 0.30;
+  for (var _rv = 0; _rv < (cfg.rivers || []).length; _rv++) {
+    var _rpts = cfg.rivers[_rv].pts || [];
+    var _wpts = _rpts.map(function (p) { return { x: gx(p[0]), z: gz(p[1]) }; });
+    if (_wpts.length < 2) continue;
+    var _dense = catmullRomCenterline(_wpts, 10);
+    var _bx1 = 1e9, _bx2 = -1e9, _bz1 = 1e9, _bz2 = -1e9;
+    for (var _dp = 0; _dp < _dense.length; _dp++) {
+      if (_dense[_dp].x < _bx1) _bx1 = _dense[_dp].x; if (_dense[_dp].x > _bx2) _bx2 = _dense[_dp].x;
+      if (_dense[_dp].z < _bz1) _bz1 = _dense[_dp].z; if (_dense[_dp].z > _bz2) _bz2 = _dense[_dp].z;
+    }
+    var _pad = RIVER_HALF + 2;
+    riverPolys.push({ pts: _dense, half: RIVER_HALF, bbox: { x1: _bx1 - _pad, x2: _bx2 + _pad, z1: _bz1 - _pad, z2: _bz2 + _pad } });
+    waterZones.push({ x1: _bx1 - _pad, z1: _bz1 - _pad, x2: _bx2 + _pad, z2: _bz2 + _pad });
+  }
   // 自由探索关：无迷宫墙 —— 整片田野都是可走空地（open field）。
   // 仍保留 grid 二维数组（全 false）供寻路/坐标换算使用。
   var wall = [];
@@ -1088,25 +1133,32 @@ function buildAssetMaze(cfg) {
   }
   if (!shelterRoom) shelterRoom = reach[reach.length - 1];
 
-  // —— 材质化：河上非桥格=水、桥格=小桥；无墙 → 不再生成树墙/灌木地坪 ——
+  // —— 材质化：河上的通道格=小桥（桥墩/栏杆沿流向架设）；水域不再用方块 AABB 拼，
+  // 改由 riverPolys 的绳状带渲染。无墙 → 不再生成树墙/灌木地坪。 ——
   var wallAABBs = [], treeSpecs = [], waterCells = [], bridgeCells = [];
   for (var gi = 0; gi < GW; gi++) {
     for (var gj = 0; gj < GH; gj++) {
       var cx = gx(gi), cz = gz(gj);
       var aabb = { x1: cx - cell / 2, z1: cz - cell / 2, x2: cx + cell / 2, z2: cz + cell / 2 };
-      var onRiver = isRiverCell(gi, gj);
-      if (onRiver) {
-        if (bridgeSet[gi + ',' + gj]) bridgeCells.push({ aabb: aabb, axis: (gi % 2 === 1) ? 'h' : 'v' });
-        else waterCells.push(aabb);
+      if (isRiverCell(gi, gj) && bridgeSet[gi + ',' + gj]) {
+        bridgeCells.push({ aabb: aabb, axis: (gi % 2 === 1) ? 'h' : 'v', ang: bridgeAngleAt(cx, cz) });
       }
     }
   }
-  // 导航网格：墙格 + “河流非桥格” 视为不可走；BFS 据此绕河走桥。
-  // 自由探索关 wall 全 false，navGrid 只标记水域(非桥)为阻挡；迷宫关则等价于 wall。
+  // 导航网格：墙格 + “绳状河流非桥” 视为不可走；BFS 据此绕河走桥。
+  // 自由探索关 wall 全 false，navGrid 只标记河流中心线 half 范围内(非桥)为阻挡；与碰撞/渲染完全一致。
   var navGrid = [];
   for (var ngi = 0; ngi < GW; ngi++) { navGrid[ngi] = []; for (var ngj = 0; ngj < GH; ngj++) navGrid[ngi][ngj] = wall[ngi][ngj]; }
-  for (var ngi2 = 0; ngi2 < GW; ngi2++) for (var ngj2 = 0; ngj2 < GH; ngj2++)
-    if (isRiverCell(ngi2, ngj2) && !bridgeSet[ngi2 + ',' + ngj2]) navGrid[ngi2][ngj2] = true;
+  for (var ngi2 = 0; ngi2 < GW; ngi2++) for (var ngj2 = 0; ngj2 < GH; ngj2++) {
+    if (navGrid[ngi2][ngj2]) continue;
+    var _ccx = gx(ngi2), _ccz = gz(ngj2), _bw = false;
+    for (var _rp = 0; _rp < riverPolys.length && !_bw; _rp++) {
+      var _rb = riverPolys[_rp].bbox;
+      if (_ccx < _rb.x1 || _ccx > _rb.x2 || _ccz < _rb.z1 || _ccz > _rb.z2) continue;
+      if (distToPolyline(_ccx, _ccz, riverPolys[_rp].pts).d < riverPolys[_rp].half) _bw = true;
+    }
+    if (_bw && !bridgeSet[ngi2 + ',' + ngj2]) navGrid[ngi2][ngj2] = true;
+  }
 
   // 树墙：每格 5-6 棵树（fixed，不回卷）铺满整格
   // AABB 覆盖整格且不可见：树木按冠幅半径排布、树冠不越格（走廊里不会伸进树），
@@ -1174,7 +1226,6 @@ function buildAssetMaze(cfg) {
   }
   [mazeMeshes.t0, mazeMeshes.l0, mazeMeshes.t1, mazeMeshes.l1].forEach(function (m) { m.instanceMatrix.needsUpdate = true; });
   for (var wi = 0; wi < wallAABBs.length; wi++) wallGridAdd(wallAABBs[wi]);
-  for (var wc = 0; wc < waterCells.length; wc++) waterZones.push(waterCells[wc]);
 
   // 墙格地坪：深色灌木绿地坪（每格一片，InstancedMesh 一次画完）
   // 墙体 AABB 不可见，必须让"树墙占地"在视觉上完整覆盖整格，否则玩家会看着树缝往里走、撞隐形墙
@@ -1196,75 +1247,84 @@ function buildAssetMaze(cfg) {
   thicketMesh.instanceMatrix.needsUpdate = true;
   scene.add(thicketMesh);
 
-  // 水面渲染：连续水域格按行/列合并成长条面片（纹理连续流动），孤格（斜段转角）单独一块
+  // 水面渲染：绳状河流 = 沿平滑中心线的带状网格（首尾收尖成圆头、拐角自然成弧线，不再是方块水格）
   var waterMat = new THREE.MeshStandardMaterial({
-    map: makeWaterTexture(), color: 0x9fd4f5, transparent: true, opacity: 0.88,
-    roughness: 0.15, metalness: 0.25
+    map: makeWaterTexture(), color: 0x8fd0f2, transparent: true, opacity: 0.9,
+    roughness: 0.12, metalness: 0.3, side: THREE.DoubleSide
   });
   waterMats.push(waterMat);
-  var wused = {};
-  function wkeyOf(w) { return ((w.x1 + w.x2) / 2) + ',' + ((w.z1 + w.z2) / 2); }
-  function addWaterStrip(x1, z1, x2, z2) {
-    var plane = new THREE.Mesh(new THREE.PlaneGeometry((x2 - x1) * 0.995, (z2 - z1) * 0.995), waterMat);
-    plane.rotation.x = -Math.PI / 2;
-    plane.position.set((x1 + x2) / 2, 0.04, (z1 + z2) / 2);
-    scene.add(plane);
-  }
-  // 横向合并：同一行内左右相连的水格并成一条
-  for (var wa = 0; wa < waterCells.length; wa++) {
-    var wA2 = waterCells[wa];
-    if (wused[wkeyOf(wA2)]) continue;
-    var ex = wA2.x2;
-    for (var wb = 0; wb < waterCells.length; wb++) {
-      var wB2 = waterCells[wb];
-      if (wused[wkeyOf(wB2)]) continue;
-      if (Math.abs(wB2.z1 - wA2.z1) < 0.01 && Math.abs(wB2.z2 - wA2.z2) < 0.01 && Math.abs(wB2.x1 - ex) < 0.01) {
-        ex = wB2.x2; wused[wkeyOf(wB2)] = true;
-      }
+  for (var _rpi = 0; _rpi < riverPolys.length; _rpi++) {
+    var _rp = riverPolys[_rpi], _pts = _rp.pts, _half = _rp.half, _n = _pts.length;
+    var _verts = [], _uvs = [], _idx = [], _cum = 0;
+    for (var _k = 0; _k < _n; _k++) {
+      var _prev = _pts[Math.max(0, _k - 1)], _next = _pts[Math.min(_n - 1, _k + 1)];
+      var _tx = _next.x - _prev.x, _tz = _next.z - _prev.z;
+      var _tl = Math.hypot(_tx, _tz) || 1; _tx /= _tl; _tz /= _tl;
+      var _nx = -_tz, _nz = _tx;                          // 垂直流向的法线
+      var _taper = (_k === 0 || _k === _n - 1) ? 0.32 : 1.0;  // 首尾收尖 → 圆头
+      if (_k > 0) _cum += Math.hypot(_pts[_k].x - _pts[_k - 1].x, _pts[_k].z - _pts[_k - 1].z);
+      var _v = _cum * 0.16;
+      _verts.push(_pts[_k].x + _nx * _half * _taper, 0.07, _pts[_k].z + _nz * _half * _taper);
+      _verts.push(_pts[_k].x - _nx * _half * _taper, 0.07, _pts[_k].z - _nz * _half * _taper);
+      _uvs.push(0, _v, 1, _v);
     }
-    wused[wkeyOf(wA2)] = true;
-    addWaterStrip(wA2.x1, wA2.z1, ex, wA2.z2);
-  }
-  // 纵向合并：剩下同一列内上下相连的水格并成一条（孤格自成一格）
-  for (var wc = 0; wc < waterCells.length; wc++) {
-    var wC2 = waterCells[wc];
-    if (wused[wkeyOf(wC2)]) continue;
-    var ez = wC2.z2;
-    for (var wd = 0; wd < waterCells.length; wd++) {
-      var wD2 = waterCells[wd];
-      if (wused[wkeyOf(wD2)]) continue;
-      if (Math.abs(wD2.x1 - wC2.x1) < 0.01 && Math.abs(wD2.x2 - wC2.x2) < 0.01 && Math.abs(wD2.z1 - ez) < 0.01) {
-        ez = wD2.z2; wused[wkeyOf(wD2)] = true;
-      }
+    for (var _k2 = 0; _k2 < _n - 1; _k2++) {
+      var a = _k2 * 2;
+      _idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
     }
-    wused[wkeyOf(wC2)] = true;
-    addWaterStrip(wC2.x1, wC2.z1, wC2.x2, ez);
+    var _wg = new THREE.BufferGeometry();
+    _wg.setAttribute('position', new THREE.Float32BufferAttribute(_verts, 3));
+    _wg.setAttribute('uv', new THREE.Float32BufferAttribute(_uvs, 2));
+    _wg.setIndex(_idx); _wg.computeVertexNormals();
+    var _wm = new THREE.Mesh(_wg, waterMat); _wm.receiveShadow = true; _wm.frustumCulled = false;
+    scene.add(_wm);
   }
-  // 桥面：河上的通道格 = 木板桥（栏杆沿行走方向）
-  var woodMat = new THREE.MeshStandardMaterial({ color: 0xa9763f, roughness: 1 });
-  var darkMat = new THREE.MeshStandardMaterial({ color: 0x7d5427, roughness: 1 });
+  // 桥面：河上的通道格 = 立体木板桥（略拱桥面 + 桥墩入水 + 栏杆立柱），沿流向架设、横跨越河流
+  var woodMat = new THREE.MeshStandardMaterial({ color: 0xb07a40, roughness: 0.85 });
+  var darkMat = new THREE.MeshStandardMaterial({ color: 0x6f4a24, roughness: 0.9 });
+  var ropeMat = new THREE.MeshStandardMaterial({ color: 0xc9a063, roughness: 0.7 });
   for (var bc = 0; bc < bridgeCells.length; bc++) {
     var bcell = bridgeCells[bc];
     bridgeZones.push(bcell.aabb);
     var g = new THREE.Group();
-    var deck = new THREE.Mesh(new THREE.BoxGeometry(cell, 0.26, cell), woodMat);
-    deck.position.y = 0.34; deck.castShadow = true; deck.receiveShadow = true;
-    g.add(deck);
+    var ang = (bcell.ang !== undefined ? bcell.ang : 0) - Math.PI / 2;  // 桥面横跨越河流
+    var lenAcross = cell + 1.6;     // 跨河方向总长（含两侧上岸搭接）
+    var lenAlong = cell * 0.94;     // 顺流方向桥面宽
+    var deckTop = BRIDGE_DECK_TOP;
+    // 桥面：多块木板拼成，沿跨河方向中间略拱
+    var plankN = 9;
+    for (var pk = 0; pk < plankN; pk++) {
+      var t = pk / (plankN - 1) - 0.5;
+      var arch = Math.cos(t * Math.PI) * 0.07;
+      var plank = new THREE.Mesh(new THREE.BoxGeometry(lenAcross / plankN * 0.94, 0.16, lenAlong), woodMat);
+      plank.position.set(t * lenAcross, deckTop - 0.08 + arch, 0);
+      plank.castShadow = plank.receiveShadow = true;
+      g.add(plank);
+    }
+    // 桥面两道深色边木（立体感）
+    for (var s1 = -1; s1 <= 1; s1 += 2) {
+      var edge = new THREE.Mesh(new THREE.BoxGeometry(lenAcross, 0.1, 0.22), darkMat);
+      edge.position.set(0, deckTop + 0.01, s1 * (lenAlong / 2 - 0.12));
+      g.add(edge);
+    }
+    // 桥墩：两端各一根，伸入水下
+    for (var s2 = -1; s2 <= 1; s2 += 2) {
+      var pier = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.26, deckTop + 1.5, 6), darkMat);
+      pier.position.set(s2 * (lenAcross / 2 - 0.5), (deckTop - 1.5) / 2, 0);
+      pier.castShadow = true; g.add(pier);
+    }
+    // 栏杆：两侧沿顺流方向，顶杆 + 立柱
     for (var s3 = -1; s3 <= 1; s3 += 2) {
-      var railGeo = bcell.axis === 'h'
-        ? new THREE.BoxGeometry(0.13, 0.13, cell)
-        : new THREE.BoxGeometry(cell, 0.13, 0.13);
-      var rail = new THREE.Mesh(railGeo, darkMat);
-      if (bcell.axis === 'h') rail.position.set(0, 0.78, s3 * (cell / 2 - 0.18));
-      else rail.position.set(s3 * (cell / 2 - 0.18), 0.78, 0);
+      var rail = new THREE.Mesh(new THREE.BoxGeometry(lenAcross, 0.12, 0.12), ropeMat);
+      rail.position.set(0, deckTop + 0.46, s3 * (lenAlong / 2 - 0.22));
       g.add(rail);
-      for (var p = -2; p <= 2; p++) {
-        var post = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.72, 0.14), darkMat);
-        if (bcell.axis === 'h') post.position.set(p * cell / 5, 0.62, s3 * (cell / 2 - 0.18));
-        else post.position.set(s3 * (cell / 2 - 0.18), 0.62, p * cell / 5);
-        g.add(post);
+      for (var bp = -2; bp <= 2; bp++) {
+        var post = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.52, 0.13), darkMat);
+        post.position.set(bp * lenAcross / 5, deckTop + 0.22, s3 * (lenAlong / 2 - 0.22));
+        post.castShadow = true; g.add(post);
       }
     }
+    g.rotation.y = ang;
     g.position.set((bcell.aabb.x1 + bcell.aabb.x2) / 2, 0, (bcell.aabb.z1 + bcell.aabb.z2) / 2);
     scene.add(g);
   }
@@ -1277,7 +1337,7 @@ function buildAssetMaze(cfg) {
     shelterRoom: { x: shelterRoom.x, z: shelterRoom.z, i: shelterRoom.i, j: shelterRoom.j, d: shelterRoom.d },
     entrance: { x: gx(rc * 2 + 1), z: MZ0 + cell * 1.6 },
     rivers: riverLists.map(function (l) { return l.map(function (c) { return { i: c.i, j: c.j }; }); }),
-    wallCount: wallAABBs.length, bridgeCount: bridgeCells.length, waterCount: waterCells.length
+    wallCount: wallAABBs.length, bridgeCount: bridgeCells.length, waterCount: riverPolys.length
   };
 }
 
@@ -1309,7 +1369,8 @@ function queryWalls(x, z, r) {
   }
   return res;
 }
-if (L.asset) maze = buildAssetMaze(L.asset);
+waterZones.length = 0; bridgeZones.length = 0; mazeTrees.length = 0; riverPolys.length = 0; waterMats.length = 0;
+maze = L.asset ? buildAssetMaze(L.asset) : null;
 
 /* ================= 通用阻挡判定 ================= */
 /* 迷宫占地框（含边距）：环境树与回卷树不得进入，否则树木会封堵房间/走廊造成死路 */
@@ -1678,7 +1739,7 @@ function buildBarn() {
   gableShape.moveTo(-WALL_HW, 0); gableShape.lineTo(WALL_HW, 0); gableShape.lineTo(0, ROOF_RISE); gableShape.closePath();
   var gableGeo = new THREE.ExtrudeGeometry(gableShape, { depth: 0.12, bevelEnabled: false });
   var gableF = new THREE.Mesh(gableGeo, woodMat); gableF.position.set(0, WALL_TOP, WALL_HD);
-  var gableB = new THREE.Mesh(gableGeo, woodMat); gableB.position.set(0, WALL_TOP, -WALL_HD - 0.12); gableB.rotation.y = Math.PI;
+  var gableB = new THREE.Mesh(gableGeo, woodMat); gableB.position.set(0, WALL_TOP, -WALL_HD); gableB.rotation.y = Math.PI;
 
   // 双坡屋顶（屋脊沿 Z 方向）：坡度 = 抬升/半宽 = 2.4/3.6，两坡从屋脊(x=0,y=7.0) 向 ±X 落到屋檐。
   // 屋檐向 ±X 各出挑 0.4，前后沿 Z 各出挑 0.4；坡面下沿与山墙三角形顶边严格重合，杜绝破口。
@@ -2132,15 +2193,16 @@ function drawMinimap() {
       mm.fillRect(dx * SC - 1.3, dz * SC - 1.3, 2.6, 2.6);
     }
   }
-  // 河流：蓝色块（迷宫树墙已由树木深色点覆盖）
-  mm.fillStyle = 'rgba(90,170,230,0.9)';
-  for (var wi = 0; wi < waterZones.length; wi++) {
-    var wz2 = waterZones[wi];
-    var wzx = (wz2.x1 + wz2.x2) / 2 - cow.pos.x, wzz = (wz2.z1 + wz2.z2) / 2 - cow.pos.z;
-    if (Math.abs(wzx) < RANGE && Math.abs(wzz) < RANGE) {
-      mm.fillRect(wzx * SC - (wz2.x2 - wz2.x1) * SC / 2, wzz * SC - (wz2.z2 - wz2.z1) * SC / 2,
-        (wz2.x2 - wz2.x1) * SC, (wz2.z2 - wz2.z1) * SC);
+  // 河流：绳状蓝线（沿平滑中心线绘制，与 3D 河流一致）
+  mm.strokeStyle = 'rgba(90,170,230,0.95)'; mm.lineWidth = 4; mm.lineCap = 'round'; mm.lineJoin = 'round';
+  for (var _rpi = 0; _rpi < riverPolys.length; _rpi++) {
+    var _rp = riverPolys[_rpi], _pts = _rp.pts;
+    mm.beginPath();
+    for (var _k = 0; _k < _pts.length; _k++) {
+      var _wx = _pts[_k].x - cow.pos.x, _wz = _pts[_k].z - cow.pos.z;
+      if (_k === 0) mm.moveTo(_wx * SC, _wz * SC); else mm.lineTo(_wx * SC, _wz * SC);
     }
+    mm.stroke();
   }
   // 小桥：黄色块
   mm.fillStyle = '#e8b04b';
@@ -2403,13 +2465,16 @@ function navWaypoint(tx, tz) {
 }
 
 function updateCow(dt, t) {
-  var cowBaseY = cowGroundY(cow.pos.x, cow.pos.z);   // 山地：小牛贴合地面起伏（取脚下最高点，避免嵌进坡面）
+  // 小牛脚下高度：平地=0；山地贴合起伏；站在小桥上=桥面顶面（产生“上桥抬高、下桥落回”的正确物理交互）
+  var onBr = bridgeZones.length && onBridge(cow.pos.x, cow.pos.z);
+  var cowFootY = onBr ? BRIDGE_DECK_TOP : cowGroundY(cow.pos.x, cow.pos.z);
   if (cow.jumpT > 0) {
     cow.jumpT -= dt;
     var p = 1 - Math.max(0, cow.jumpT) / 0.32;
-    cow.group.position.y = cowBaseY + Math.sin(p * Math.PI) * 0.55;
+    cow.group.position.y = cowFootY + Math.sin(p * Math.PI) * 0.55;
   } else {
-    cow.group.position.y = cowBaseY;
+    // 平滑插值：上桥时小牛平滑抬升到桥面、离开桥平滑落回地面（不再贴着水面/穿模）
+    cow.group.position.y += (cowFootY - cow.group.position.y) * Math.min(1, dt * 8);
   }
 
   // 被龙卷风卷住期间无法控制
@@ -2589,7 +2654,7 @@ function updateCow(dt, t) {
   // —— 被龙卷风卷飞（无伤害）：卷上高空 + 空中翻滚，风停后落回地面 ——
   if (cow.blown > 0 || cow.liftY > 0) {
     var b = cow.blown;
-    cow.group.position.y = cowBaseY + cow.liftY + (0.8 + Math.sin(t * 13) * 0.5) * b;
+    cow.group.position.y = cowFootY + cow.liftY + (0.8 + Math.sin(t * 13) * 0.5) * b;
     cow.group.rotation.x = Math.sin(t * 9) * 0.45 * b;
     cow.group.rotation.z = Math.cos(t * 7) * 0.35 * b;
   }

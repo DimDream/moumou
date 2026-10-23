@@ -82,9 +82,11 @@ window.LEVEL_DATA = {
    *   stalactites 钟乳石数量（自洞顶垂下，纯装饰）
    *   stalagmites 石笋数量（自地面突起，碰撞障碍）
    *   pillars     石柱数量（地面到洞顶的立柱，碰撞障碍）
-   *   pools       水潭数量（圆形静水，倒影+波纹，碰撞障碍）
-   *   crystals    水晶数量（仅第 15 关，发光多彩，碰撞障碍）
-   *   traps       脆弱石板陷阱数量 */
+ *   pools       水潭数量（圆形静水，倒影+波纹，浅水可涉水通过）
+ *   poolScale   水潭大小倍数（第 14 关更大）
+ *   pillarRows  石柱按“回廊”成排布置的排数（第 12 关石柱回廊；0=随机撒点）
+ *   crystals    水晶数量（仅第 15 关，发光多彩，碰撞障碍）
+ *   traps       脆弱石板陷阱数量 */
   6: {
     seed: 0x6A1B2C,
     name: '碎石山坡', desc: '崎岖山地，绕开岩石与稀疏林木收集草料',
@@ -128,7 +130,7 @@ window.LEVEL_DATA = {
     name: '石柱回廊', desc: '林立的石柱间穿行，静水潭映着提灯微光，踩碎石板会陷落',
     star: 4, tornado: false, cave: true, foodCount: 5,
     asset: { rw: 8, rh: 6, cell: 11, rivers: null },
-    stalactites: 18, stalagmites: 16, pillars: 8, pools: 3, crystals: 0, traps: 5
+    stalactites: 18, stalagmites: 16, pillars: 20, pillarRows: 3, pools: 3, crystals: 0, traps: 5
   },
   13: {
     seed: 0xD3E4F5,
@@ -139,16 +141,16 @@ window.LEVEL_DATA = {
   },
   14: {
     seed: 0xE4F5A6,
-    name: '幽渊石林', desc: '嶙峋石林与深潭交织的洞窟深处，石板陷阱无处不在',
+    name: '幽渊石林', desc: '嶙峋石林与大片深潭交织的洞窟深处，石板陷阱无处不在',
     star: 5, tornado: false, cave: true, foodCount: 5,
     asset: { rw: 9, rh: 8, cell: 11, rivers: null },
-    stalactites: 26, stalagmites: 24, pillars: 16, pools: 4, crystals: 0, traps: 7
+    stalactites: 26, stalagmites: 24, pillars: 16, pools: 5, poolScale: 1.5, crystals: 0, traps: 7
   },
   15: {
     seed: 0xF5A607,
-    name: '荧光水晶宫', desc: '发光的多彩水晶照亮洞窟，石笋水潭间藏着最后的脆石板',
+    name: '荧光水晶宫', desc: '遍地发光的多彩水晶照亮洞窟，石笋水潭间藏着最后的脆石板',
     star: 5, tornado: false, cave: true, foodCount: 5,
     asset: { rw: 9, rh: 7, cell: 11, rivers: null },
-    stalactites: 12, stalagmites: 12, pillars: 8, pools: 3, crystals: 16, traps: 8
+    stalactites: 12, stalagmites: 12, pillars: 8, pools: 3, crystals: 42, traps: 8
   }
 };

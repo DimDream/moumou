@@ -630,8 +630,9 @@ var startTime = performance.now();
 var scene = new THREE.Scene();
 var rainy = !!L.rain;
 if (IS_CAVE) {
-  scene.background = new THREE.Color(0x06090e);
-  scene.fog = new THREE.Fog(0x06090e, 24, 96);
+  // 洞穴：柔和的暮蓝（不再是漆黑一片），温和适合儿童
+  scene.background = new THREE.Color(0x2b3646);
+  scene.fog = new THREE.Fog(0x2b3646, 34, 150);
 } else if (rainy) {
   scene.background = new THREE.Color(0x93a9bd);
   scene.fog = new THREE.Fog(0x93a9bd, 30, 180);
@@ -664,14 +665,14 @@ addEventListener('resize', function () {
 
 /* ================= 灯光 ================= */
 var cowLight = null;   // 洞穴关小牛自带提灯（暖色点光源），非洞穴关为 null
-scene.add(new THREE.HemisphereLight(0xd8ecff, 0x77b255, rainy ? 0.55 : (IS_CAVE ? 0.16 : 0.9)));
-var sun = new THREE.DirectionalLight(0xfff3d8, rainy ? 0.9 : (IS_CAVE ? 0.0 : 1.7));
+scene.add(new THREE.HemisphereLight(0xd8ecff, 0x8a9a6a, rainy ? 0.55 : (IS_CAVE ? 0.5 : 0.9)));
+var sun = new THREE.DirectionalLight(0xfff3d8, rainy ? 0.9 : (IS_CAVE ? 0.55 : 1.7));
 if (IS_CAVE) {
-  // 洞穴：天空光几乎为零，靠小牛提灯 + 微弱冷色补光营造幽暗氛围（不投影，省开销）
-  scene.add(new THREE.AmbientLight(0x33405a, 0.22));
-  // 小牛自带提灯：暖色点光源跟随小牛，照亮周围洞窟
-  cowLight = new THREE.PointLight(0xffd49a, 2.6, 50, 1.6);
-  cowLight.position.set(0, 3.2, 0);
+  // 洞穴：环境光提亮到温和亮度（儿童友好：看得清、不压抑），辅以小牛提灯的暖光
+  scene.add(new THREE.AmbientLight(0x9fb2d8, 0.5));
+  // 小牛自带提灯：暖色点光源跟随小牛，照亮范围约半个屏幕
+  cowLight = new THREE.PointLight(0xffd9a3, 5.5, 72, 1.05);
+  cowLight.position.set(0, 3.6, 0);
   scene.add(cowLight);
 }
 if (sun.intensity > 0) {
@@ -691,20 +692,20 @@ if (sun.intensity > 0) {
 function makeCaveFloorTexture() {
   var c = document.createElement('canvas'); c.width = c.height = 256;
   var g = c.getContext('2d');
-  g.fillStyle = '#2b3138'; g.fillRect(0, 0, 256, 256);
-  var cols = ['#343c45', '#262c34', '#3c454f', '#2f363f', '#404a55'];
+  g.fillStyle = '#4a525c'; g.fillRect(0, 0, 256, 256);
+  var cols = ['#566070', '#454e59', '#626d7a', '#4e5763', '#6b7684'];
   for (var i = 0; i < 2600; i++) {
     g.fillStyle = cols[(Math.random() * cols.length) | 0];
     g.fillRect(Math.random() * 256, Math.random() * 256, 2 + Math.random() * 3, 2 + Math.random() * 3);
   }
   // 暗水渍/苔斑
   for (var j = 0; j < 60; j++) {
-    g.fillStyle = 'rgba(30,42,40,0.18)';
+    g.fillStyle = 'rgba(52,66,62,0.16)';
     g.beginPath(); g.arc(Math.random() * 256, Math.random() * 256, 6 + Math.random() * 22, 0, TAU); g.fill();
   }
   // 矿物亮片
   for (var k = 0; k < 120; k++) {
-    g.fillStyle = 'rgba(160,180,200,0.10)';
+    g.fillStyle = 'rgba(190,210,230,0.16)';
     g.fillRect(Math.random() * 256, Math.random() * 256, 1, 1);
   }
   var t = new THREE.CanvasTexture(c);
@@ -797,7 +798,7 @@ scene.add(voidG);
   var cx = (MAP.x1 + MAP.x2) / 2, cz = (MAP.z1 + MAP.z2) / 2;
   if (IS_CAVE) {
     // 洞穴：高耸的岩石洞壁 + 高位穹顶（不遮挡俯视视线，仅作边缘框景）+ 四壁顶缘垂下的钟乳石边饰
-    var rockMat2 = new THREE.MeshStandardMaterial({ color: 0x3a3f47, roughness: 1, flatShading: true });
+    var rockMat2 = new THREE.MeshStandardMaterial({ color: 0x5a626d, roughness: 1, flatShading: true });
     var topY = 22, botY = -3, hh = topY - botY, ccy = (topY + botY) / 2, t = 4.0;
     var bars = [
       { s: [w + t * 2, hh, t], p: [cx, ccy, MAP.z1 + t / 2] },
@@ -811,14 +812,14 @@ scene.add(voidG);
       bm.receiveShadow = true; bm.castShadow = true;
       scene.add(bm);
     }
-    // 洞顶穹顶：高位半球（BackSide），远离俯视相机故不遮挡，仅在地块边缘形成幽暗洞顶框景
+    // 洞顶穹顶：高位半球（BackSide），远离俯视相机故不遮挡，仅在地块边缘形成洞顶框景
     var R = Math.max(w, d) * 0.62 + 30;
     var dome = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 18, 0, TAU, 0, Math.PI / 2),
-      new THREE.MeshStandardMaterial({ color: 0x20252c, roughness: 1, side: THREE.BackSide }));
+      new THREE.MeshStandardMaterial({ color: 0x39414e, roughness: 1, side: THREE.BackSide }));
     dome.position.set(cx, 0, cz);
     scene.add(dome);
     // 四壁顶缘垂下的钟乳石边饰（装饰，纯视觉）
-    var lipMat = new THREE.MeshStandardMaterial({ color: 0x33383f, roughness: 1, flatShading: true });
+    var lipMat = new THREE.MeshStandardMaterial({ color: 0x4d545e, roughness: 1, flatShading: true });
     function addLip(ax, az, dx, dz, len) {
       for (var s = 4; s < len; s += 8) {
         var px = ax + dx * s, pz = az + dz * s, cl = 1.6 + Math.random() * 2.6;
@@ -1552,7 +1553,7 @@ function blocked(x, z) {
   if (maze && queryWalls(x, z, COW_R).length > 0) return true;
   if (IS_CAVE) {
     if (caveObs.length && queryCaveObs(x, z, COW_R).length > 0) return true;
-    if (poolZones.length && inPool(x, z)) return true;
+    // 水潭是浅水：可以直接涉水通过（不阻挡），过潭时脚下微微下沉、泛起涟漪
   } else {
     if (waterZones.length && inWater(x, z) && !onBridge(x, z)) return true;
   }
@@ -1708,7 +1709,7 @@ if (ROCK_COUNT > 0) {
       var S = 32, data = new Uint8Array(S * S * 4);
       for (var y = 0; y < S; y++) {
         var t = y / (S - 1);
-        var r = (24 + t * 96) | 0, g = (34 + t * 116) | 0, b = (56 + t * 130) | 0;
+        var r = (70 + t * 110) | 0, g = (86 + t * 120) | 0, b = (110 + t * 120) | 0;
         for (var x = 0; x < S; x++) {
           var i = (y * S + x) * 4; data[i] = r; data[i + 1] = g; data[i + 2] = b; data[i + 3] = 255;
         }
@@ -1737,8 +1738,8 @@ if (ROCK_COUNT > 0) {
     }
     return false;
   }
-  var stoneMat = new THREE.MeshStandardMaterial({ color: 0x6b6f76, roughness: 0.95, flatShading: true });
-  var darkStone = new THREE.MeshStandardMaterial({ color: 0x44494f, roughness: 1, flatShading: true });
+  var stoneMat = new THREE.MeshStandardMaterial({ color: 0x8f959d, roughness: 0.95, flatShading: true });
+  var darkStone = new THREE.MeshStandardMaterial({ color: 0x666d76, roughness: 1, flatShading: true });
 
   // 钟乳石：自洞顶垂下（装饰，无碰撞）
   var stalN = L.stalactites || 0;
@@ -1763,57 +1764,103 @@ if (ROCK_COUNT > 0) {
     });
   }
 
-  // 石柱：地面到洞顶（碰撞）
+  // 石柱：地面到洞顶（碰撞）。pillarRows>0 时按“回廊”成排摆动布置（第 12 关石柱回廊）
   var pilN = L.pillars || 0;
-  for (var pN = 0; pN < pilN; pN++) {
-    placeSafe(1.4, function (x, z) {
-      var rr = 1.0 + rand(0, 0.5);
-      var m = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.8, rr, CEIL, 10), stoneMat);
-      m.position.set(x, CEIL / 2, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
-      caveObs.push({ x: x, z: z, r: rr * 0.95, glow: false }); caveGridAdd(caveObs[caveObs.length - 1]);
-    });
+  function addPillar(x, z) {
+    var rr = 1.0 + rand(0, 0.5);
+    var m = new THREE.Mesh(new THREE.CylinderGeometry(rr * 0.8, rr, CEIL, 10), stoneMat);
+    m.position.set(x, CEIL / 2, z); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+    caveObs.push({ x: x, z: z, r: rr * 0.95, glow: false }); caveGridAdd(caveObs[caveObs.length - 1]);
+  }
+  var rows = L.pillarRows || 0;
+  if (rows > 0) {
+    // 回廊：几条略带摆动的柱列横穿洞窟，柱间留出可供小牛穿行的通道
+    var mcX = (MAP.x1 + MAP.x2) / 2, mcZ = (MAP.z1 + MAP.z2) / 2;
+    var made = 0;
+    for (var rk = 0; rk < rows && made < pilN; rk++) {
+      var ang = rand(0, Math.PI);
+      var dx0 = Math.cos(ang), dz0 = Math.sin(ang);
+      var px0 = -dz0, pz0 = dx0;
+      var span = Math.min(MAP.x2 - MAP.x1, MAP.z1 - MAP.z2) * 0.42;
+      var off = rows > 1 ? (rk - (rows - 1) / 2) * (span * 0.55 / (rows - 1)) : 0;
+      var phase = rand(0, TAU), amp = rand(2, 6), step = 14 + rand(0, 5);
+      for (var s2 = -span; s2 <= span && made < pilN; s2 += step) {
+        var wob = Math.sin(s2 * 0.085 + phase) * amp;
+        var qx = mcX + px0 * (off + wob) + dx0 * s2;
+        var qz = mcZ + pz0 * (off + wob) + dz0 * s2;
+        if (!inBounds(qx, qz, 4) || !caveFree(qx, qz, 1.4)) continue;
+        addPillar(qx, qz); made++;
+      }
+    }
+    // 回廊没摆满（被出生点/庇护所/水潭挤掉）时，随机撒点补足
+    for (var pN2 = made; pN2 < pilN; pN2++) placeSafe(1.4, function (x, z) { addPillar(x, z); });
+  } else {
+    for (var pN3 = 0; pN3 < pilN; pN3++) placeSafe(1.4, function (x, z) { addPillar(x, z); });
   }
 
-  // 水潭：圆形静水（倒影 + 波纹，碰撞）
+  // 水潭：圆形静水（倒影 + 波纹，浅水可涉水通过）
   var poolN = L.pools || 0;
+  var poolScale = L.poolScale || 1;
   var poolEnv = makeCaveEnvTexture();
   for (var pn = 0; pn < poolN; pn++) {
-    placeSafe(3.0, function (x, z) {
-      var pr = 3.0 + rand(0, 2.5);
-      var pmat = new THREE.MeshStandardMaterial({ color: 0x2f6f93, roughness: 0.12, metalness: 0.55,
-        transparent: true, opacity: 0.9, envMap: poolEnv, envMapIntensity: 0.9 });
-      var disc = new THREE.Mesh(new THREE.CircleGeometry(pr, 36), pmat);
+    placeSafe(3.0 * poolScale, function (x, z) {
+      var pr = (3.0 + rand(0, 2.5)) * poolScale;
+      var pmat = new THREE.MeshStandardMaterial({ color: 0x3f88b0, roughness: 0.12, metalness: 0.5,
+        transparent: true, opacity: 0.86, envMap: poolEnv, envMapIntensity: 1.0 });
+      var disc = new THREE.Mesh(new THREE.CircleGeometry(pr, 40), pmat);
       disc.rotation.x = -Math.PI / 2; disc.position.set(x, 0.05, z); disc.receiveShadow = true; scene.add(disc);
-      var rim = new THREE.Mesh(new THREE.TorusGeometry(pr, 0.32, 6, 28), darkStone);
+      var rim = new THREE.Mesh(new THREE.TorusGeometry(pr, 0.34, 6, 30), darkStone);
       rim.rotation.x = -Math.PI / 2; rim.position.set(x, 0.1, z); scene.add(rim);
       poolZones.push({ x: x, z: z, r: pr });
     });
   }
 
   // 水晶：发光多彩（仅第 15 关），碰撞 + 彩色点光（控制点光源数量）
+  // 第 15 关特色：数量多、“到处都是”、光芒更亮，且每一簇由多种颜色的晶体组成
   var cryN = L.crystals || 0;
   var crystalColors = [0xff5d8f, 0x5dd0ff, 0x9b5dff, 0x5dff9b, 0xffd35d, 0xff7a5d];
-  var lightBudget = 6;
+  var lightBudget = 12;
+  // 水晶可以更密：与其它障碍留一点缝、彼此间距小一些，从而实现“到处都是”
+  function crystalFree(x, z) {
+    if (x * x + z * z < 64) return false;                                                  // 别压出生点
+    if (maze && maze.entrance && dist2(x, z, maze.entrance.x, maze.entrance.z) < 81) return false;
+    if (shelter && dist2(x, z, shelter.x, shelter.z) < 100) return false;
+    if (inMazeBox(x, z, 6)) return false;
+    for (var k = 0; k < caveObs.length; k++) { var d = caveObs[k]; if (dist2(x, z, d.x, d.z) < (d.r + 0.9) * (d.r + 0.9)) return false; }
+    for (var p = 0; p < poolZones.length; p++) { var pp = poolZones[p]; if (dist2(x, z, pp.x, pp.z) < (pp.r + 1.0) * (pp.r + 1.0)) return false; }
+    for (var s = 0; s < slateTraps.length; s++) { var st = slateTraps[s]; if (!st.broken && dist2(x, z, st.x, st.z) < (st.r + 1.0) * (st.r + 1.0)) return false; }
+    for (var c = 0; c < crystals.length; c++) { var cc = crystals[c]; if (dist2(x, z, cc.x, cc.z) < 2.1 * 2.1) return false; }
+    return true;
+  }
   for (var cni = 0; cni < cryN; cni++) {
-    placeSafe(1.0, function (x, z) {
-      var col = crystalColors[(rand() * crystalColors.length) | 0];
+    for (var ctry = 0; ctry < 400; ctry++) {
+      var cx2 = rand(MAP.x1 + 5, MAP.x2 - 5), cz2 = rand(MAP.z2 + 5, MAP.z1 - 5);
+      if (!crystalFree(cx2, cz2)) continue;
       var grp = new THREE.Group();
-      var ch = 1.6 + rand(0, 1.6);
-      var mat = new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.9, roughness: 0.25, metalness: 0.1 });
-      var shardN = 3 + ((rand() * 3) | 0);
+      var ch = 1.5 + rand(0, 1.5);
+      // 每簇水晶：多根不同颜色的晶体柱（多种颜色在一块）
+      var shardN = 3 + ((rand() * 4) | 0);
+      var mats = [];
       for (var sn = 0; sn < shardN; sn++) {
-        var sh = new THREE.Mesh(new THREE.ConeGeometry(0.28 + rand(0, 0.18), ch * (0.6 + rand(0, 0.5)), 6), mat);
-        sh.position.set(rand(-0.5, 0.5), ch * 0.4, rand(-0.5, 0.5));
-        sh.rotation.z = rand(-0.4, 0.4); sh.rotation.x = rand(-0.3, 0.3); grp.add(sh);
+        var scol = crystalColors[(rand() * crystalColors.length) | 0];
+        var smat = new THREE.MeshStandardMaterial({ color: scol, emissive: scol, emissiveIntensity: 1.6, roughness: 0.22, metalness: 0.05 });
+        mats.push(smat);
+        var sh = new THREE.Mesh(new THREE.ConeGeometry(0.26 + rand(0, 0.2), ch * (0.55 + rand(0, 0.55)), 6), smat);
+        sh.position.set(rand(-0.55, 0.55), ch * 0.4, rand(-0.55, 0.55));
+        sh.rotation.z = rand(-0.45, 0.45); sh.rotation.x = rand(-0.35, 0.35); grp.add(sh);
       }
-      grp.position.set(x, 0, z); grp.castShadow = true; scene.add(grp);
-      var cl = { x: x, z: z, r: 0.9, glow: true, mat: mat, phase: rand(0, TAU), light: null };
+      var cbase = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 0.95, 0.3, 7), darkStone);
+      cbase.position.y = 0.12; grp.add(cbase);
+      grp.position.set(cx2, 0, cz2); grp.castShadow = true; scene.add(grp);
+      var cl = { x: cx2, z: cz2, r: 0.85, glow: true, mats: mats, phase: rand(0, TAU), light: null };
       if (lightBudget > 0) {
         lightBudget--;
-        var pl = new THREE.PointLight(col, 1.4, 16, 1.8); pl.position.set(x, ch * 0.5, z); scene.add(pl); cl.light = pl;
+        var lcol = crystalColors[(rand() * crystalColors.length) | 0];
+        var pl = new THREE.PointLight(lcol, 2.6, 24, 1.4); pl.position.set(cx2, ch * 0.55, cz2); scene.add(pl); cl.light = pl;
       }
       crystals.push(cl); caveObs.push(cl); caveGridAdd(cl);
-    });
+      break;
+    }
   }
 
   // 脆弱石板陷阱：踩中半陷坑中，挣扎 2 秒才能出来（非碰撞障碍）
@@ -1821,18 +1868,24 @@ if (ROCK_COUNT > 0) {
   for (var tni = 0; tni < trapN; tni++) {
     placeSafe(1.6, function (x, z) {
       var tr = 1.5;
-      var tile = new THREE.Mesh(new THREE.BoxGeometry(tr * 2, 0.25, tr * 2),
-        new THREE.MeshStandardMaterial({ color: 0x837a63, roughness: 1, flatShading: true }));
-      tile.position.set(x, 0.13, z); tile.receiveShadow = true; scene.add(tile);
+      // 圆形石板（略微上大下小，有一点厚度感）
+      var tile = new THREE.Mesh(new THREE.CylinderGeometry(tr * 1.02, tr * 0.96, 0.26, 24),
+        new THREE.MeshStandardMaterial({ color: 0x8d8469, roughness: 1, flatShading: true }));
+      tile.position.set(x, 0.13, z); tile.receiveShadow = true; tile.castShadow = true; scene.add(tile);
+      // 放射状裂纹（提示“这里脆弱”）
       var pts = [];
-      for (var cg = 0; cg < 5; cg++) { var a0 = rand(0, TAU), a1 = a0 + rand(0.6, 1.6);
-        pts.push(new THREE.Vector3(Math.cos(a0) * 0.2, 0.27, Math.sin(a0) * 0.2), new THREE.Vector3(Math.cos(a1) * tr * 0.9, 0.27, Math.sin(a1) * tr * 0.9)); }
+      for (var cg = 0; cg < 6; cg++) { var a0 = rand(0, TAU), a1 = a0 + rand(0.6, 1.6);
+        pts.push(new THREE.Vector3(Math.cos(a0) * 0.2, 0.27, Math.sin(a0) * 0.2), new THREE.Vector3(Math.cos(a1) * tr * 0.92, 0.27, Math.sin(a1) * tr * 0.92)); }
       var crack = new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x2c2820 }));
       crack.position.set(x, 0, z); scene.add(crack);
-      var pit = new THREE.Mesh(new THREE.CylinderGeometry(tr, tr * 0.6, 2.4, 16, 1, true),
+      // 坑：黑暗圆口（踩碎后显露）+ 竖井壁（侧面看有深度）
+      var hole = new THREE.Mesh(new THREE.CircleGeometry(tr * 0.94, 24),
+        new THREE.MeshBasicMaterial({ color: 0x0b0906 }));
+      hole.rotation.x = -Math.PI / 2; hole.position.set(x, 0.02, z); hole.visible = false; scene.add(hole);
+      var pit = new THREE.Mesh(new THREE.CylinderGeometry(tr, tr * 0.55, 2.4, 18, 1, true),
         new THREE.MeshStandardMaterial({ color: 0x14110c, roughness: 1, side: THREE.DoubleSide }));
       pit.position.set(x, -1.2, z); pit.visible = false; scene.add(pit);
-      slateTraps.push({ x: x, z: z, r: tr, broken: false, tile: tile, pit: pit });
+      slateTraps.push({ x: x, z: z, r: tr, broken: false, tile: tile, pit: pit, hole: hole, crack: crack });
     });
   }
 
@@ -2593,7 +2646,7 @@ function drawMinimap() {
       var _txv = _tt.x - cow.pos.x, _tzv = _tt.z - cow.pos.z;
       if (Math.abs(_txv) < RANGE && Math.abs(_tzv) < RANGE) {
         mm.fillStyle = _tt.broken ? 'rgba(180,60,40,0.55)' : '#e8503a';
-        mm.fillRect(_txv * SC - 2.5, _tzv * SC - 2.5, 5, 5);
+        mm.beginPath(); mm.arc(_txv * SC, _tzv * SC, 3.2, 0, TAU); mm.fill();
       }
     }
   }
@@ -2658,7 +2711,10 @@ renderer.domElement.addEventListener('pointerdown', function (e) {
   ray.setFromCamera(ndc, camera);
   if (ray.ray.intersectPlane(groundPlane, hit)) {
     if (cow.trapped) {
-      if (trappedToastT <= 0) { toast('🌀 被龙卷风卷住了，等风停才能动弹！', 2); trappedToastT = 3; }
+      if (trappedToastT <= 0) {
+        toast(cow.trapTile ? '🪨 陷在脆石板坑里，正在挣扎（约 2 秒）…' : '🌀 被龙卷风卷住了，等风停才能动弹！', 2);
+        trappedToastT = 3;
+      }
       return;
     }
     setTarget(hit.x, hit.z);
@@ -2746,36 +2802,48 @@ function updateWater(dt) {
   }
 }
 
-/* 洞穴特效：提灯跟随小牛、水晶呼吸发光、水潭靠近起波纹 */
-function spawnRipple(x, z, baseR) {
-  var geo = new THREE.RingGeometry(baseR * 0.45, baseR * 0.58, 28);
-  var mat = new THREE.MeshBasicMaterial({ color: 0x9fe8ff, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+/* 洞穴特效：提灯跟随小牛、水晶呼吸发光、水潭涉水起波纹 */
+function spawnRipple(x, z, poolR, maxOuter) {
+  // 细环（细微）；maxOuter 保证整圈涟漪都在潭内，绝不漫到潭外
+  var inner = poolR * 0.16, outer = poolR * 0.23;
+  var geo = new THREE.RingGeometry(inner, outer, 32);
+  var mat = new THREE.MeshBasicMaterial({ color: 0xaeeeff, transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false });
   var m = new THREE.Mesh(geo, mat);
-  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.12, z); scene.add(m);
-  ripples.push({ mesh: m, life: 1.1, max: 1.1, r: baseR });
+  m.rotation.x = -Math.PI / 2; m.position.set(x, 0.09, z); scene.add(m);
+  ripples.push({ mesh: m, life: 0.85, max: 0.85, outer0: outer, sMax: Math.max(outer * 1.04, maxOuter) / outer });
 }
 function updateCaveFx(dt, t) {
   if (!IS_CAVE) return;
   if (cowLight) cowLight.position.set(cow.group.position.x, cow.group.position.y + 2.8, cow.group.position.z);
   for (var i = 0; i < crystals.length; i++) {
-    var c = crystals[i], k = 0.7 + 0.3 * Math.sin(t * 2.2 + c.phase);
-    if (c.mat) c.mat.emissiveIntensity = k;
-    if (c.light) c.light.intensity = 1.0 + 0.8 * Math.sin(t * 2.2 + c.phase);
+    var c = crystals[i], k = 0.75 + 0.35 * Math.sin(t * 2.2 + c.phase);
+    if (c.mats) for (var mi = 0; mi < c.mats.length; mi++) c.mats[mi].emissiveIntensity = k * 1.7;
+    else if (c.mat) c.mat.emissiveIntensity = k * 1.7;
+    if (c.light) c.light.intensity = 2.2 + 1.1 * Math.sin(t * 2.2 + c.phase);
   }
+  // 水潭：小牛涉水时在脚下泛起细微波纹（只在潭内扩散）
   for (var p = 0; p < poolZones.length; p++) {
     var po = poolZones[p];
     if (po.rippleT === undefined) po.rippleT = 0;
     po.rippleT -= dt;
-    if (po.rippleT <= 0 && Math.hypot(cow.pos.x - po.x, cow.pos.z - po.z) < po.r + 2.6) {
-      po.rippleT = 0.45; spawnRipple(po.x, po.z, po.r);
+    var pdx = cow.pos.x - po.x, pdz = cow.pos.z - po.z;
+    var pdist = Math.hypot(pdx, pdz);
+    if (po.rippleT <= 0 && pdist < po.r * 0.92) {
+      po.rippleT = 0.5;
+      // 波纹起点=小牛当前位置（最多收到潭内 66% 半径处）；扩张上限=到潭缘的剩余距离，
+      // 两者配合保证整圈涟漪（含外缘）始终在潭内 —— 即使小牛贴着潭边下水也不会漫出潭外。
+      var cl = Math.min(pdist, po.r * 0.66), ca = Math.atan2(pdz, pdx);
+      spawnRipple(po.x + Math.cos(ca) * cl, po.z + Math.sin(ca) * cl, po.r, po.r * 0.94 - cl);
     }
   }
   for (var r = ripples.length - 1; r >= 0; r--) {
     var rp = ripples[r];
     rp.life -= dt;
-    var s = 1 + (1 - rp.life / rp.max) * (rp.r * 1.6);
+    var prog = 1 - rp.life / rp.max;
+    // 细环缓慢张大到上限即止（上限已按生成点位置算好，确保不越潭界）
+    var s = 1 + prog * (rp.sMax - 1);
     rp.mesh.scale.set(s, s, s);
-    rp.mesh.material.opacity = Math.max(0, rp.life / rp.max) * 0.6;
+    rp.mesh.material.opacity = Math.max(0, 1 - prog) * 0.4;
     if (rp.life <= 0) {
       scene.remove(rp.mesh); rp.mesh.material.dispose(); rp.mesh.geometry.dispose();
       ripples.splice(r, 1);
@@ -2887,11 +2955,13 @@ function navWaypoint(tx, tz) {
 function updateCow(dt, t) {
   // —— 脆弱石板陷阱：踩中半陷坑中，挣扎 2 秒才能出来，期间不能操作 ——
   if (slateTraps.length) {
-    if (!cow.trapped) {
+    if (!cow.trapped && (state === 'play' || state === 'cleared')) {
       for (var _t = 0; _t < slateTraps.length; _t++) {
         var _tr = slateTraps[_t];
         if (!_tr.broken && dist2(cow.pos.x, cow.pos.z, _tr.x, _tr.z) < _tr.r * _tr.r) {
-          cow.trapped = true; cow.trapT = 0; cow.trapTile = _tr; break;
+          cow.trapped = true; cow.trapT = 0; cow.trapTile = _tr;
+          toast('🪨 咔嚓——脆石板塌了！小牛半陷坑中，正在挣扎…', 2.4);
+          break;
         }
       }
     }
@@ -2906,7 +2976,9 @@ function updateCow(dt, t) {
         if (cow.trapTile) {
           cow.trapTile.broken = true;
           if (cow.trapTile.pit) cow.trapTile.pit.visible = true;
+          if (cow.trapTile.hole) cow.trapTile.hole.visible = true;
           if (cow.trapTile.tile) cow.trapTile.tile.visible = false;
+          if (cow.trapTile.crack) cow.trapTile.crack.visible = false;
           cow.trapTile = null;
         }
       }
@@ -2914,9 +2986,11 @@ function updateCow(dt, t) {
     } else cow.trapOffset = 0;
   } else cow.trapOffset = 0;
 
-  // 小牛脚下高度：平地=0；山地贴合起伏；站在小桥上=桥面顶面（“上桥抬高、下桥落回”）；陷进石板坑=下沉
+  // 小牛脚下高度：平地=0；山地贴合起伏；站在小桥上=桥面顶面（“上桥抬高、下桥落回”）；
+  // 涉过浅水潭=微微下沉（像在蹚水）；陷进石板坑=继续下沉（trapOffset）
   var onBr = bridgeZones.length && onBridge(cow.pos.x, cow.pos.z);
-  var cowFootY = onBr ? BRIDGE_DECK_TOP : cowGroundY(cow.pos.x, cow.pos.z);
+  var wading = !onBr && poolZones.length > 0 && inPool(cow.pos.x, cow.pos.z);
+  var cowFootY = onBr ? BRIDGE_DECK_TOP : (wading ? -0.16 : cowGroundY(cow.pos.x, cow.pos.z));
   var _extra = cow.trapOffset || 0;
   if (cow.jumpT > 0) {
     cow.jumpT -= dt;
@@ -3087,6 +3161,12 @@ function updateCow(dt, t) {
   while (diff > Math.PI) diff -= TAU;
   while (diff < -Math.PI) diff += TAU;
   cow.group.rotation.y += diff * Math.min(1, dt * 9);
+  // 石板陷阱挣扎中：身体小幅抖动（陷在坑里蹬蹄子）
+  if (cow.trapped && cow.trapTile) {
+    var _stg = cow.trapT;
+    if (_stg > 0.35 && _stg < 2.35) cow.group.rotation.z = Math.sin(_stg * 26) * 0.09;
+    else cow.group.rotation.z = 0;
+  } else cow.group.rotation.z = 0;
 
   if (cow.moving) cow.walkPhase += dt * 9;
   else if (cow.blown > 0) cow.walkPhase += dt * 16; // 被卷住时四蹄乱蹬
@@ -3213,8 +3293,10 @@ function spawnTornado() {
 
 function updateTornado(dt, t) {
   // 无风（未生成/消散中）时，卷飞状态自然恢复：停止翻滚并从空中落回地面
+  // 注意：脆石板陷阱的“挣扎中”也占用 trapped 标志，此处不能一律清除，
+  // 否则小牛每帧被解困又被重新判定陷落（trapT 归零），永远掙扎不完 → 陷阱里出不来。
   if (!tornado || tornado.dying) {
-    cow.trapped = false;
+    if (!cow.trapTile) cow.trapped = false;
     if (cow.blown > 0) cow.blown = Math.max(0, cow.blown - dt * 2);
     if (cow.liftY > 0) cow.liftY = Math.max(0, cow.liftY - dt * 6);
   }
@@ -3448,7 +3530,7 @@ function updateHUD(dt) {
 function win() {
   state = 'won';
   cow.target = null;
-  cow.trapped = false;
+  cow.trapped = false; cow.trapTile = null; cow.trapOffset = 0;
   if (tornado) { scene.remove(tornado.group); tornado = null; } // 过关后风平浪静
   var secs = ((performance.now() - startTime) / 1000).toFixed(1);
   winText.innerHTML = '小牛用 <b>' + secs + '</b> 秒收集了 5 份草料，<br>顺利回到了哞哞庇护所！🛖✨';
@@ -3524,8 +3606,9 @@ window.__mmState = {
   get trees() { return trees; },
   get rocks() { return rocks; },
   waterZones: waterZones, bridgeZones: bridgeZones,
-  blocked: blocked, inWater: inWater, onBridge: onBridge,
-  queryWalls: queryWalls, queryTrees: queryTrees, queryRocks: queryRocks, L: L,
+  slateTraps: slateTraps, poolZones: poolZones, crystals: crystals, ripples: ripples,
+  blocked: blocked, inWater: inWater, onBridge: onBridge, inPool: inPool,
+  queryWalls: queryWalls, queryTrees: queryTrees, queryRocks: queryRocks, queryCaveObs: queryCaveObs, L: L,
   nav: navWaypoint, tornado: function () { return tornado; }
 };
 } catch (err) {

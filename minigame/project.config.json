@@ -1,0 +1,22 @@
+{
+  "description": "哞哞庇护所 · 微信小游戏（Three.js r158 / 15 关）",
+  "projectname": "moumou-shelter-minigame",
+  "appid": "touristappid",
+  "compileType": "game",
+  "libVersion": "3.0.0",
+  "miniprogramRoot": "./",
+  "setting": {
+    "urlCheck": false,
+    "es6": false,
+    "enhance": false,
+    "postcss": false,
+    "minified": false,
+    "bigPackageSizeSupport": false
+  },
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "tools" }
+    ]
+  },
+  "condition": {}
+}
